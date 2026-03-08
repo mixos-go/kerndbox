@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: GPL-2.0
+# arch/arm64/Makefile.um - included by arch/um/Makefile for arm64 hosts
+
+# Virtual address where UML loads (matches arm64 default mmap base)
+START := 0x400000
+
+# ELF output format
+ELF_ARCH   := aarch64
+ELF_FORMAT := elf64-littleaarch64
+
+# arm64 compiler flags for UML host-side objects
+KBUILD_CFLAGS += -fno-builtin
+
+# Stub symbols used by arch/um/kernel/skas/uaccess.c
+STUB_START = stub_segv
+STUB_END   = stub_end

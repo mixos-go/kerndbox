@@ -1,0 +1,14 @@
+From: DevBox UML arm64 Port
+Subject: [PATCH] um/os-Linux: guard x86-only asm/ldt.h include in start_up.c
+
+--- a/arch/um/os-Linux/start_up.c
++++ b/arch/um/os-Linux/start_up.c
+@@ -17,7 +17,9 @@ #include <sys/resource.h>
+ #include <sys/resource.h>
+-#include <asm/ldt.h>
++#ifdef CONFIG_X86
++#include <asm/ldt.h>
++#endif
+ #include <asm/unistd.h>
+ #include <init.h>
+ #include <os.h>

@@ -1,0 +1,35 @@
+From: DevBox UML arm64 Port
+Subject: [PATCH] um/skas: arm64 jmpbuf access for new_thread/start_idle_thread
+
+--- a/arch/um/os-Linux/skas/process.c
++++ b/arch/um/os-Linux/skas/process.c
+@@ -476,7 +476,11 @@ void new_thread(void *stack, jmp_buf *buf, void (*handler)(void))
+ void new_thread(void *stack, jmp_buf *buf, void (*handler)(void))
+ {
+-	(*buf)[0].JB_IP = (unsigned long) handler;
+-	(*buf)[0].JB_SP = (unsigned long) stack + UM_THREAD_SIZE -
+-		sizeof(void *);
++#ifdef __aarch64__
++	((unsigned long *)buf)[JB_IP] = (unsigned long) handler;
++	((unsigned long *)buf)[JB_SP] = (unsigned long) stack + UM_THREAD_SIZE - sizeof(void *);
++#else
++	(*buf)[0].JB_IP = (unsigned long) handler;
++	(*buf)[0].JB_SP = (unsigned long) stack + UM_THREAD_SIZE - sizeof(void *);
++#endif
+ }
+ 
+@@ -515,7 +519,11 @@ int start_idle_thread(void *stack, jmp_buf *switch_buf)
+ 	case INIT_JMP_NEW_THREAD:
+-		(*switch_buf)[0].JB_IP = (unsigned long) uml_finishsetup;
+-		(*switch_buf)[0].JB_SP = (unsigned long) stack +
+-			UM_THREAD_SIZE - sizeof(void *);
++#ifdef __aarch64__
++		((unsigned long *)switch_buf)[JB_IP] = (unsigned long) uml_finishsetup;
++		((unsigned long *)switch_buf)[JB_SP] = (unsigned long) stack + UM_THREAD_SIZE - sizeof(void *);
++#else
++		(*switch_buf)[0].JB_IP = (unsigned long) uml_finishsetup;
++		(*switch_buf)[0].JB_SP = (unsigned long) stack + UM_THREAD_SIZE - sizeof(void *);
++#endif
+ 		break;
+ 	case INIT_JMP_CALLBACK:
+ 		(*cb_proc)(cb_arg);

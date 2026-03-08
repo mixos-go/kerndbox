@@ -1,0 +1,26 @@
+From: DevBox UML arm64 Port
+Subject: [PATCH 9/13] um/os-Linux/registers.c: arm64 compat for init_pid_registers
+
+--- a/arch/um/os-Linux/registers.c
++++ b/arch/um/os-Linux/registers.c
+@@ -18,11 +18,19 @@
+ 
+ int init_pid_registers(int pid)
+ {
+-	int err;
++	int err = 0;
+ 
++#ifdef __aarch64__
++	extern int ptrace_getregs(long pid, unsigned long *regs_out);
++	extern int ptrace_setregs(long pid, unsigned long *regs_in);
++	err = ptrace_getregs(pid, exec_regs);
++	if (err < 0)
++		return err;
++#else
+ 	err = ptrace(PTRACE_GETREGS, pid, 0, exec_regs);
+ 	if (err < 0)
+ 		return -errno;
++#endif
+ 
+ 	arch_init_registers(pid);
+ 	get_fp_registers(pid, exec_fp_regs);

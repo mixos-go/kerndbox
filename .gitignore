@@ -1,0 +1,5 @@
+*.zip
+*.log
+log/
+output/
+build/

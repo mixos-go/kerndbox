@@ -1,0 +1,60 @@
+From: DevBox UML arm64 Port
+Subject: [PATCH] um: guard x86-only code in um_arch.c
+
+--- a/arch/um/kernel/um_arch.c
++++ b/arch/um/kernel/um_arch.c
+@@ -33,6 +33,7 @@
+ #include <os.h>
+ 
+ #include "um_arch.h"
++#include <skas/skas.h>  /* new_thread_handler */
+ 
+ #define DEFAULT_COMMAND_LINE_ROOT "root=98:0"
+ #define DEFAULT_COMMAND_LINE_CONSOLE "console=tty0"
+@@ -60,7 +61,9 @@
+ 	.loops_per_jiffy	= 0,
+ 	.ipi_pipe		= { -1, -1 },
+ 	.cache_alignment	= L1_CACHE_BYTES,
+-	.x86_capability		= { 0 }
++#ifdef CONFIG_X86
++	.x86_capability		= { 0 },
++#endif
+ };
+ 
+ EXPORT_SYMBOL(boot_cpu_data);
+@@ -81,6 +84,7 @@
+ 	seq_printf(m, "model name\t: UML\n");
+ 	seq_printf(m, "mode\t\t: skas\n");
+ 	seq_printf(m, "host\t\t: %s\n", host_info);
++#ifdef CONFIG_X86
+ 	seq_printf(m, "fpu\t\t: %s\n", cpu_has(&boot_cpu_data, X86_FEATURE_FPU) ? "yes" : "no");
+ 	seq_printf(m, "flags\t\t:");
+ 	for (i = 0; i < 32*NCAPINTS; i++)
+@@ -88,6 +92,7 @@
+ 			seq_printf(m, " %s", x86_cap_flags[i]);
+ 	seq_printf(m, "\n");
+ 	seq_printf(m, "cache_alignment\t: %d\n", boot_cpu_data.cache_alignment);
++#endif
+ 	seq_printf(m, "bogomips\t: %lu.%02lu\n",
+ 		   loops_per_jiffy/(500000/HZ),
+ 		   (loops_per_jiffy/(5000/HZ)) % 100);
+@@ -280,11 +285,13 @@
+ 
+ static void parse_host_cpu_flags(char *line)
+ {
++#ifdef CONFIG_X86
+ 	int i;
+ 	for (i = 0; i < 32*NCAPINTS; i++) {
+ 		if ((x86_cap_flags[i] != NULL) && strstr(line, x86_cap_flags[i]))
+ 			set_cpu_cap(&boot_cpu_data, i);
+ 	}
++#endif
+ }
+ static void parse_cache_line(char *line)
+ {
+
+@@ -1,6 +1,11 @@
+ #include "um_arch.h"
++
++/* Prototypes for UML stub functions — suppress -Wmissing-prototypes */
++#include <linux/objtool.h>

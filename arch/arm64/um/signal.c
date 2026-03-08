@@ -1,0 +1,176 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * arch/arm64/um/signal.c — UML rt_sigframe setup for arm64 guests.
+ */
+
+#include <linux/signal.h>
+#include <linux/uaccess.h>
+#include <linux/sched.h>
+#include <linux/syscalls.h>
+#include <asm/sigcontext.h>
+#include <asm/ucontext.h>
+#include <asm/unistd.h>
+#include <linux/elf.h>
+#include <frame_kern.h>
+#include <registers.h>
+#include <skas.h>
+
+/* fpsimd_context is already defined in asm/sigcontext.h */
+
+struct end_context {
+	struct _aarch64_ctx head;
+};
+
+struct arm64_rt_sigframe {
+	struct siginfo        info;
+	struct ucontext       uc;
+};
+
+struct user_fpsimd_state_um {
+	__uint128_t vregs[32];
+	__u32 fpsr;
+	__u32 fpcr;
+	__u32 __reserved[2];
+};
+
+static int save_fpsimd_to_sigframe(struct pt_regs *regs,
+				   struct sigcontext __user *sc)
+{
+	struct user_fpsimd_state_um fp;
+	struct fpsimd_context fpc;
+	struct end_context end;
+	void __user *reserved = sc->__reserved;
+	int err = 0;
+
+	memcpy(&fp, regs->regs.fp, sizeof(fp));
+
+	fpc.head.magic = FPSIMD_MAGIC;
+	fpc.head.size  = sizeof(fpc);
+	fpc.fpsr       = fp.fpsr;
+	fpc.fpcr       = fp.fpcr;
+	memcpy(fpc.vregs, fp.vregs, sizeof(fpc.vregs));
+
+	err |= copy_to_user(reserved, &fpc, sizeof(fpc));
+
+	end.head.magic = 0;
+	end.head.size  = 0;
+	err |= copy_to_user((char __user *)reserved + sizeof(fpc),
+			    &end, sizeof(end));
+	return err;
+}
+
+static int restore_fpsimd_from_sigframe(struct pt_regs *regs,
+					struct sigcontext __user *sc)
+{
+	struct fpsimd_context fpc;
+	struct user_fpsimd_state_um fp;
+	void __user *reserved = sc->__reserved;
+
+	if (copy_from_user(&fpc, reserved, sizeof(fpc)))
+		return -EFAULT;
+
+	if (fpc.head.magic != FPSIMD_MAGIC || fpc.head.size < sizeof(fpc))
+		return -EINVAL;
+
+	fp.fpsr = fpc.fpsr;
+	fp.fpcr = fpc.fpcr;
+	memcpy(fp.vregs, fpc.vregs, sizeof(fp.vregs));
+	memset(fp.__reserved, 0, sizeof(fp.__reserved));
+
+	memcpy(regs->regs.fp, &fp, sizeof(fp));
+	return 0;
+}
+
+int setup_signal_stack_si(unsigned long stack_top, struct ksignal *ksig,
+			  struct pt_regs *regs, sigset_t *set)
+{
+	struct arm64_rt_sigframe __user *frame;
+	int err = 0;
+	int sig = ksig->sig;
+
+	frame = (struct arm64_rt_sigframe __user *)
+		round_down(stack_top - sizeof(*frame), 16);
+
+	if (!access_ok(frame, sizeof(*frame)))
+		return -EFAULT;
+
+	if (ksig->ka.sa.sa_flags & SA_SIGINFO)
+		err |= copy_siginfo_to_user(&frame->info, &ksig->info);
+
+	err |= __put_user(0, &frame->uc.uc_flags);
+	err |= __put_user((struct ucontext __user *)0, &frame->uc.uc_link);
+	err |= __save_altstack(&frame->uc.uc_stack,
+			       regs->regs.gp[HOST_SP]);
+	err |= copy_to_user(&frame->uc.uc_sigmask, set, sizeof(*set));
+
+	err |= __put_user(current->thread.arch.faultinfo.fault_address,
+			  &frame->uc.uc_mcontext.fault_address);
+
+	err |= copy_to_user(frame->uc.uc_mcontext.regs,
+			    regs->regs.gp,
+			    31 * sizeof(__u64));
+	err |= __put_user((__u64)regs->regs.gp[HOST_SP],
+			  &frame->uc.uc_mcontext.sp);
+	err |= __put_user((__u64)regs->regs.gp[HOST_PC],
+			  &frame->uc.uc_mcontext.pc);
+	err |= __put_user((__u64)regs->regs.gp[HOST_PSTATE],
+			  &frame->uc.uc_mcontext.pstate);
+
+	err |= save_fpsimd_to_sigframe(regs, &frame->uc.uc_mcontext);
+
+	if (err)
+		return err;
+
+	regs->regs.gp[0]         = sig;
+	regs->regs.gp[1]         = (unsigned long)&frame->info;
+	regs->regs.gp[2]         = (unsigned long)&frame->uc;
+	regs->regs.gp[30]        = (unsigned long)ksig->ka.sa.sa_restorer;
+	regs->regs.gp[HOST_SP]   = (unsigned long)frame;
+	regs->regs.gp[HOST_PC]   = (unsigned long)ksig->ka.sa.sa_handler;
+
+	return 0;
+}
+
+SYSCALL_DEFINE0(rt_sigreturn)
+{
+	struct pt_regs *regs = current_pt_regs();
+	struct arm64_rt_sigframe __user *frame;
+	sigset_t set;
+	unsigned long sp;
+
+	sp = regs->regs.gp[HOST_SP];
+	frame = (struct arm64_rt_sigframe __user *)sp;
+
+	if (!access_ok(frame, sizeof(*frame)))
+		goto badframe;
+
+	if (__copy_from_user(&set, &frame->uc.uc_sigmask, sizeof(set)))
+		goto badframe;
+
+	set_current_blocked(&set);
+
+	if (copy_from_user(regs->regs.gp, frame->uc.uc_mcontext.regs,
+			   31 * sizeof(__u64)))
+		goto badframe;
+
+	if (__get_user(regs->regs.gp[HOST_SP],
+		       &frame->uc.uc_mcontext.sp))
+		goto badframe;
+	if (__get_user(regs->regs.gp[HOST_PC],
+		       &frame->uc.uc_mcontext.pc))
+		goto badframe;
+	if (__get_user(regs->regs.gp[HOST_PSTATE],
+		       &frame->uc.uc_mcontext.pstate))
+		goto badframe;
+
+	if (restore_fpsimd_from_sigframe(regs, &frame->uc.uc_mcontext))
+		goto badframe;
+
+	UPT_SYSCALL_NR(&regs->regs) = -1;
+
+	return regs->regs.gp[0];
+
+badframe:
+	force_sig(SIGSEGV);
+	return 0;
+}

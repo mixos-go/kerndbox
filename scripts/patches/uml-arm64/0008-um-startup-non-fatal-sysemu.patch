@@ -1,0 +1,39 @@
+From: DevBox UML arm64 Port
+Subject: [PATCH 8/13] um/os-Linux/start_up.c: make check_sysemu non-fatal, export flag
+
+--- a/arch/um/os-Linux/start_up.c
++++ b/arch/um/os-Linux/start_up.c
+@@ -131,6 +131,8 @@
+ 	}
+ }
+ 
++int sysemu_supported = 0;
++
+ static void __init check_sysemu(void)
+ {
+ 	int pid, n, status, count=0;
+@@ -140,7 +142,7 @@
+ 
+ 	if ((ptrace(PTRACE_SETOPTIONS, pid, 0,
+ 		   (void *) PTRACE_O_TRACESYSGOOD) < 0))
+-		fatal_perror("check_sysemu: PTRACE_SETOPTIONS failed");
++		goto fail;
+ 
+ 	while (1) {
+ 		count++;
+@@ -176,12 +178,13 @@
+ 	stop_ptraced_child(pid, 0);
+ 
+ 	os_info("OK\n");
+-
++	sysemu_supported = 1;
+ 	return;
+ 
+ fail:
+ 	stop_ptraced_child(pid, 1);
+-	fatal("missing\n");
++	os_info("not available - using PTRACE_SYSCALL fallback\n");
++	sysemu_supported = 0;
+ }
+ 
+ static void __init check_ptrace(void)

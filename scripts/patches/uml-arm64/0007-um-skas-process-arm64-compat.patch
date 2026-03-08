@@ -1,0 +1,146 @@
+From: DevBox UML arm64 Port
+Subject: [PATCH 7/13] um/os-Linux/skas/process.c: arm64 compat + PTRACE_SYSCALL fallback
+
+--- a/arch/um/os-Linux/skas/process.c
++++ b/arch/um/os-Linux/skas/process.c
+@@ -16,6 +16,13 @@
+ #include <as-layout.h>
+ #include <init.h>
+ #include <kern_util.h>
++#include <registers.h>
++#ifdef __aarch64__
++#include <sys/uio.h>
++/* arm64 GP register save/restore via PTRACE_GETREGSET/SETREGSET */
++int save_registers(int pid, struct uml_pt_regs *regs);
++int restore_registers(int pid, struct uml_pt_regs *regs);
++#endif
+ #include <mem.h>
+ #include <os.h>
+ #include <ptrace_user.h>
+@@ -25,6 +29,9 @@
+ #include <linux/threads.h>
+ #include <timetravel.h>
+ #include "../internal.h"
++#include <asm/unistd.h>
++
++extern int sysemu_supported;
+ 
+ int is_skas_winch(int pid, int fd, void *data)
+ {
+@@ -33,4 +40,5 @@
+ 
++#ifndef __aarch64__  /* ptrace_reg_name is x86-only; suppress unused-fn error */
+ static const char *ptrace_reg_name(int idx)
+ {
+ #define R(n) case HOST_##n: return #n
+@@ -79,4 +87,5 @@
+ 	return "";
+ }
++#endif /* !__aarch64__ */
+ 
+ static int ptrace_dump_regs(int pid)
+@@ -84,14 +93,25 @@
+ 	unsigned long regs[MAX_REG_NR];
+ 	int i;
+ 
++#ifdef __aarch64__
++	{
++		struct iovec iov = { .iov_base = regs, .iov_len = sizeof(regs) };
++		if (ptrace(PTRACE_GETREGSET, pid, (void *)1L /* NT_PRSTATUS */, &iov) < 0)
++			return -errno;
++	}
++#else
+ 	if (ptrace(PTRACE_GETREGS, pid, 0, regs) < 0)
+ 		return -errno;
++#endif
+ 
+ 	printk(UM_KERN_ERR "Stub registers -\n");
+ 	for (i = 0; i < ARRAY_SIZE(regs); i++) {
++#ifdef __aarch64__
++		printk(UM_KERN_ERR "\t(%2d): %lx\n", i, regs[i]);
++#else
+ 		const char *regname = ptrace_reg_name(i);
+-
+ 		printk(UM_KERN_ERR "\t%s\t(%2d): %lx\n", regname, i, regs[i]);
++#endif
+ 	}
+ 
+ 	return 0;
+@@ -336,6 +356,15 @@
+ 	return err;
+ }
+ 
++static bool at_syscall_entry;
++static unsigned long saved_syscall_nr;
++
++static inline void arm64_neutralize_syscall(int pid, struct uml_pt_regs *regs)
++{
++	UPT_SYSCALL_NR(regs) = __NR_getpid;
++	restore_registers(pid, regs);
++}
++
+ void userspace(struct uml_pt_regs *regs, unsigned long *aux_fp_regs)
+ {
+ 	int err, status, op, pid = userspace_pid[0];
+@@ -368,7 +397,11 @@
+ 		 * fail.  In this case, there is nothing to do but
+ 		 * just kill the process.
+ 		 */
++		#ifdef __aarch64__
++		if (restore_registers(pid, regs)) {
++		#else
+ 		if (ptrace(PTRACE_SETREGS, pid, 0, regs->gp)) {
++		#endif
+ 			printk(UM_KERN_ERR "%s - ptrace set regs failed, errno = %d\n",
+ 			       __func__, errno);
+ 			fatal_sigsegv();
+@@ -380,10 +413,11 @@
+ 			fatal_sigsegv();
+ 		}
+ 
+-		if (singlestepping())
+-			op = PTRACE_SYSEMU_SINGLESTEP;
+-		else
+-			op = PTRACE_SYSEMU;
++		if (sysemu_supported) {
++			op = singlestepping() ? PTRACE_SYSEMU_SINGLESTEP : PTRACE_SYSEMU;
++		} else {
++			op = PTRACE_SYSCALL;
++		}
+ 
+ 		if (ptrace(op, pid, 0, 0)) {
+ 			printk(UM_KERN_ERR "%s - ptrace continue failed, op = %d, errno = %d\n",
+@@ -399,7 +433,11 @@
+ 		}
+ 
+ 		regs->is_user = 1;
++		#ifdef __aarch64__
++		if (save_registers(pid, regs)) {
++		#else
+ 		if (ptrace(PTRACE_GETREGS, pid, 0, regs->gp)) {
++		#endif
+ 			printk(UM_KERN_ERR "%s - PTRACE_GETREGS failed, errno = %d\n",
+ 			       __func__, errno);
+ 			fatal_sigsegv();
+@@ -442,7 +480,19 @@
+ 				else handle_segv(pid, regs, aux_fp_regs);
+ 				break;
+ 			case SIGTRAP + 0x80:
+-				handle_trap(pid, regs);
++				if (sysemu_supported) {
++					handle_trap(pid, regs);
++				} else {
++					if (!at_syscall_entry) {
++						at_syscall_entry = true;
++						saved_syscall_nr = UPT_SYSCALL_NR(regs);
++						arm64_neutralize_syscall(pid, regs);
++					} else {
++						at_syscall_entry = false;
++						UPT_SYSCALL_NR(regs) = saved_syscall_nr;
++						handle_trap(pid, regs);
++					}
++				}
+ 				break;
+ 			case SIGTRAP:
+ 				relay_signal(SIGTRAP, (struct siginfo *)&si, regs);
+

@@ -1,0 +1,28 @@
+From: DevBox UML arm64 Port
+Subject: [PATCH] um/kernel/process: arm64 compat (wchan JB_SP, fpregs)
+
+--- a/arch/um/kernel/process.c
++++ b/arch/um/kernel/process.c
+@@ -270,7 +270,11 @@
+ 	if (stack_page == 0)
+ 		return 0;
+ 
++#ifdef __aarch64__
++	sp = ((unsigned long *)p->thread.switch_buf)[JB_SP];
++#else
+ 	sp = p->thread.switch_buf->JB_SP;
++#endif
+ 	/*
+ 	 * Bail if the stack pointer is below the bottom of the kernel
+ 	 * stack for some reason
+@@ -296,6 +300,10 @@
+ {
+ 	int cpu = current_thread_info()->cpu;
+ 
++#ifdef __aarch64__
++	return get_fp_registers(userspace_pid[cpu], (unsigned long *)fpu) == 0;
++#else
+ 	return save_i387_registers(userspace_pid[cpu], (unsigned long *) fpu) == 0;
++#endif
+ }
+ 

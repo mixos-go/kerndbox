@@ -1,0 +1,21 @@
+From: DevBox UML arm64 Port
+Subject: [PATCH] um: guard x86-only cpufeature.h content with CONFIG_X86
+
+--- a/arch/um/include/asm/cpufeature.h
++++ b/arch/um/include/asm/cpufeature.h
+@@ -6,6 +6,8 @@
+ 
+ #if defined(__KERNEL__) && !defined(__ASSEMBLY__)
+ 
++/* x86-specific CPU feature infrastructure - not available on arm64 UML */
++#ifdef CONFIG_X86
+ #include <asm/asm.h>
+ #include <linux/bitops.h>
+ 
+@@ -137,5 +139,6 @@
+ #define CPU_FEATURE_TYPEVAL		boot_cpu_data.x86_vendor, boot_cpu_data.x86, \
+ 					boot_cpu_data.x86_model
+ 
++#endif /* CONFIG_X86 */
+ #endif /* defined(__KERNEL__) && !defined(__ASSEMBLY__) */
+ #endif /* _ASM_UM_CPUFEATURE_H */
