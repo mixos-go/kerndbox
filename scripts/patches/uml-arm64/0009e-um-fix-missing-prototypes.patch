@@ -1,13 +1,8 @@
 From: DevBox UML arm64 Port
 Subject: [PATCH] um: fix -Wmissing-prototypes warnings in kernel files
 
-- skas/syscall.c: add #include <skas/skas.h> (already declares handle_syscall)
-- process.c: make user_context static (not called externally)
-- ptrace.c: remove unused variable 'i'
-- um_arch.c: add forward declarations before alternative/patching stubs
-
---- a/arch/um/kernel/skas/syscall.c	2026-03-08 09:33:27.370227469 +0000
-+++ b/arch/um/kernel/skas/syscall.c	2026-03-08 09:33:27.376227540 +0000
+--- a/arch/um/kernel/skas/syscall.c
++++ b/arch/um/kernel/skas/syscall.c
 @@ -9,6 +9,7 @@
  #include <kern_util.h>
  #include <sysdep/ptrace.h>
@@ -17,8 +12,8 @@ Subject: [PATCH] um: fix -Wmissing-prototypes warnings in kernel files
  #include <linux/time-internal.h>
  #include <asm/unistd.h>
 
---- a/arch/um/kernel/process.c	2026-03-08 09:33:27.381227600 +0000
-+++ b/arch/um/kernel/process.c	2026-03-08 09:33:27.386227659 +0000
+--- a/arch/um/kernel/process.c
++++ b/arch/um/kernel/process.c
 @@ -209,7 +209,7 @@
  	/* Is in_interrupt() really needed? */
  }
@@ -29,8 +24,8 @@ Subject: [PATCH] um: fix -Wmissing-prototypes warnings in kernel files
  	unsigned long stack;
  
 
---- a/arch/um/kernel/ptrace.c	2026-03-08 09:33:27.391227719 +0000
-+++ b/arch/um/kernel/ptrace.c	2026-03-08 09:33:27.396227778 +0000
+--- a/arch/um/kernel/ptrace.c
++++ b/arch/um/kernel/ptrace.c
 @@ -38,7 +38,7 @@
  long arch_ptrace(struct task_struct *child, long request,
  		 unsigned long addr, unsigned long data)
@@ -40,14 +35,3 @@ Subject: [PATCH] um: fix -Wmissing-prototypes warnings in kernel files
  	unsigned long __user *p = (void __user *)data;
  	void __user *vp = p;
  
-
---- a/arch/um/kernel/um_arch.c	2026-03-08 09:33:27.401227838 +0000
-+++ b/arch/um/kernel/um_arch.c	2026-03-08 09:33:27.469228647 +0000
-@@ -435,6 +435,16 @@
- 	os_check_bugs();
- }
- 
- void apply_seal_endbr(s32 *start, s32 *end)
- {
- }
-
