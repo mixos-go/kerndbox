@@ -20,12 +20,19 @@ die() { echo "[DevBox][ERROR] $*" >&2; exit 1; }
 
 check_deps() {
     local missing=()
-    for cmd in debootstrap mkfs.ext4; do
+    for cmd in debootstrap; do
         command -v "$cmd" &>/dev/null || missing+=("$cmd")
     done
+    # mkfs.ext4 may be in /sbin (not always in PATH)
+    if ! command -v mkfs.ext4 &>/dev/null && ! [ -x /sbin/mkfs.ext4 ]; then
+        missing+=(mkfs.ext4)
+    fi
     [[ ${#missing[@]} -gt 0 ]] && \
         die "Missing: ${missing[*]}. Install: sudo apt install debootstrap e2fsprogs"
 }
+
+# Resolve mkfs.ext4 path (may be in /sbin)
+MKFS_EXT4="$(command -v mkfs.ext4 2>/dev/null || echo /sbin/mkfs.ext4)"
 
 build_rootfs() {
     local arch="$1"
@@ -40,8 +47,8 @@ build_rootfs() {
     local raw_img="$OUTPUT_DIR/debian-rootfs-${arch}.img"
     log "Building Debian ${DEBIAN_SUITE} rootfs for ${arch}..."
 
-    dd if=/dev/zero of="$raw_img" bs=1M count=4096 status=progress
-    mkfs.ext4 -F -L "debian-devbox" "$raw_img"
+    truncate -s 4G "$raw_img"
+    "$MKFS_EXT4" -F -L "debian-devbox" "$raw_img"
 
     local mnt; mnt=$(mktemp -d)
     sudo mount -o loop "$raw_img" "$mnt"

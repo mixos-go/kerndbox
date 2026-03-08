@@ -107,9 +107,6 @@ void arch_init_registers(int pid)
 
 /* ── get_thread_reg — jmp_buf accessor for UML context switch ────────────── */
 
-/* Forward declaration to suppress -Wmissing-prototypes */
-unsigned long get_thread_reg(int reg, jmp_buf *buf);
-
 unsigned long get_thread_reg(int reg, jmp_buf *buf)
 {
 	switch (reg) {

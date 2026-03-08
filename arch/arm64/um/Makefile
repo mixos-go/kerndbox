@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
 obj-y = bugs.o \
+        fault.o \
         mem.o \
         ptrace.o \
         delay.o \

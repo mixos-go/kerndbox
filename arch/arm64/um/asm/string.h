@@ -1,29 +1,38 @@
-/* SPDX-License-Identifier: GPL-2.0-only */
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * arch/arm64/um/asm/string.h
  *
- * In native arm64, string functions (strlen, strcmp, strchr, memcmp, etc.)
- * are provided by arch/arm64/lib/string.S (hand-optimised NEON assembly).
- * That code cannot run in UML (userspace process) context.
+ * Override arm64's native string.h for UML.
  *
- * By NOT defining __HAVE_ARCH_STRLEN etc., we fall back to the generic
- * lib/string.c implementations which do compile and export all symbols
- * needed by loadable modules.
+ * arm64's real string.h declares __HAVE_ARCH_* for functions implemented in
+ * arch/arm64/lib/*.S (NEON assembly). Those .S files are NOT compiled in UML
+ * mode, so we must not claim to have those implementations — otherwise modules
+ * would get undefined symbol errors.
  *
- * memcpy / memmove / memset are also redirected to generic — arm64's
- * __memcpy etc. live in arch/arm64/lib/ which is excluded from UML builds.
+ * EXCEPTION: memcpy / memmove / memset
+ * arch/um/os-Linux/user_syms.c already exports these (via libc) for all
+ * non-x86 UML architectures (guarded by #ifndef __x86_64__).
+ * We must tell lib/string.c NOT to compile its own copies, otherwise modpost
+ * sees the symbol exported twice → fatal build error.
+ *
+ * All other string functions (strlen, strcmp, strchr, etc.) are left to
+ * lib/string.c to provide — they are NOT exported by user_syms.c.
  */
 #ifndef __UM_ASM_ARM64_STRING_H
 #define __UM_ASM_ARM64_STRING_H
 
 /*
- * Intentionally empty: do NOT define __HAVE_ARCH_STRLEN,
- * __HAVE_ARCH_STRCMP, __HAVE_ARCH_STRCHR, __HAVE_ARCH_STRNCMP,
- * __HAVE_ARCH_MEMCMP, __HAVE_ARCH_MEMCHR, __HAVE_ARCH_MEMCPY,
- * __HAVE_ARCH_MEMMOVE, __HAVE_ARCH_MEMSET.
- *
- * This lets lib/string.c provide all of them with EXPORT_SYMBOL,
- * which is required for loadable kernel modules (=m configs) to link.
+ * Claim memcpy/memmove/memset so lib/string.c skips them.
+ * Actual implementations come from libc via arch/um/os-Linux/user_syms.c.
  */
+#define __HAVE_ARCH_MEMCPY
+#define __HAVE_ARCH_MEMMOVE
+#define __HAVE_ARCH_MEMSET
+
+extern void *memcpy(void *dest, const void *src, __kernel_size_t n);
+extern void *memmove(void *dest, const void *src, __kernel_size_t n);
+extern void *memset(void *s, int c, __kernel_size_t n);
+
+/* All other string functions: provided by lib/string.c (no NEON needed) */
 
 #endif /* __UM_ASM_ARM64_STRING_H */

@@ -14,3 +14,9 @@ KBUILD_CFLAGS += -fno-builtin
 # Stub symbols used by arch/um/kernel/skas/uaccess.c
 STUB_START = stub_segv
 STUB_END   = stub_end
+
+# arm64/um/asm/ headers must shadow arch/um/include/asm/ for arm64-specific overrides.
+# KBUILD_CPPFLAGS already has -I arch/arm64/um (added by arch/um/Makefile line 47)
+# but arch/um/include is added first via srctree includes. We prepend our path
+# so arm64-specific headers take priority.
+KBUILD_CPPFLAGS := -I$(srctree)/arch/arm64/um $(KBUILD_CPPFLAGS)

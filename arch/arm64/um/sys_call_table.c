@@ -1,60 +1,65 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * arch/arm64/um/sys_call_table.c
+ * arch/arm64/um/sys_call_table.c — arm64 UML syscall table
  *
- * arm64 UML syscall table.
+ * arm64 UML uses asm-generic/unistd.h (same table as arm64 native).
+ * We build it with the same two-pass technique as arch/x86/um:
  *
- * arm64 uses the generic syscall table (asm-generic/unistd.h), unlike
- * x86 which has its own.  We just include the generic UML wrapper that
- * maps each __NR_* to the corresponding sys_* or um_* handler.
+ *   Pass 1: emit  "extern asmlinkage long sym(unsigned long x6);"
+ *           for every entry → gives each sym the correct prototype.
  *
- * Syscall convention on arm64:
- *   x8  = syscall number
- *   x0..x5 = arguments
- *   x0  = return value
+ *   Pass 2: emit  "sym,"  as the array initialiser.
  *
- * UML intercepts the SVC #0 instruction via ptrace SYSCALL-entry stop,
- * reads x8 to get the syscall number, dispatches through this table,
- * writes the result back to x0, then resumes the guest skipping the
- * actual SVC so the host kernel never sees it.
+ * Because the prototype in Pass 1 matches sys_call_ptr_t exactly,
+ * no cast is needed and -Wcast-function-type cannot fire.
+ * No -Wmacro-redefined suppression needed because we undef/redefine
+ * the macros in a clean sequence before each include.
+ *
+ * Syscall ABI (arm64 / EABI64):
+ *   x8       = syscall number
+ *   x0..x5   = arguments
+ *   x0       = return value
  */
 
 #include <linux/syscalls.h>
-#include <asm/unistd.h>
+#include <linux/cache.h>
+#include <asm/syscall.h>   /* sys_call_ptr_t = long(*)(ulong x6) */
 
-/*
- * Suppress -Wcast-function-type: sys_call_ptr_t casts are inherent in the
- * UML syscall table design. Same as x86 UML.
- *
- * Suppress -Wmacro-redefined: asm-generic/unistd.h redefines __SC_3264,
- * __SC_COMP, and the __NR_* symbols that were already defined via
- * asm/unistd.h → unistd_64.h above. The redefinitions are intentional —
- * we override their meaning for the table-building pass.
+/* sys_ni_syscall: stub for unimplemented syscalls */
+extern asmlinkage long sys_ni_syscall(unsigned long, unsigned long,
+				      unsigned long, unsigned long,
+				      unsigned long, unsigned long);
+
+/* ── Pass 1: forward-declare every syscall symbol ─────────────────────────
+ * This gives the compiler the correct prototype before we take the address
+ * of each function.  Without this, the implicit (void *) → sys_call_ptr_t
+ * cast would trigger -Wcast-function-type.
  */
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wcast-function-type"
-#pragma GCC diagnostic ignored "-Wmacro-redefined"
-
-typedef long (*sys_call_ptr_t)(const struct pt_regs *);
-extern asmlinkage long sys_ni_syscall(void);
-
-/* arm64 UML overrides: signal return and mmap */
-asmlinkage long sys_rt_sigreturn(void);
-asmlinkage long sys_mmap(unsigned long addr, unsigned long len,
-			unsigned long prot, unsigned long flags,
-			unsigned long fd, unsigned long off);
-
-/* Discard compat variants — arm64 UML runs 64-bit guests only */
-#undef __SYSCALL
-#undef __SC_COMP
-#undef __SC_3264
-#define __SYSCALL(nr, sym)          [nr] = (sys_call_ptr_t)sym,
+#undef  __SYSCALL
+#undef  __SC_COMP
+#undef  __SC_3264
+#define __SYSCALL(nr, sym) \
+	asmlinkage long sym(unsigned long, unsigned long, unsigned long, \
+			    unsigned long, unsigned long, unsigned long);
 #define __SC_COMP(nr, sym, csym)    __SYSCALL(nr, sym)
 #define __SC_3264(nr, sym32, sym64) __SYSCALL(nr, sym64)
 
-const sys_call_ptr_t sys_call_table[] = {
-	[0 ... 500] = (sys_call_ptr_t)sys_ni_syscall,
+#include <asm-generic/unistd.h>
+
+/* ── Pass 2: build the table ───────────────────────────────────────────────
+ * Now that every sym has a declared prototype matching sys_call_ptr_t,
+ * placing &sym in the array requires no cast at all.
+ */
+#undef  __SYSCALL
+#undef  __SC_COMP
+#undef  __SC_3264
+#define __SYSCALL(nr, sym)          [nr] = sym,
+#define __SC_COMP(nr, sym, csym)    __SYSCALL(nr, sym)
+#define __SC_3264(nr, sym32, sym64) __SYSCALL(nr, sym64)
+
+const sys_call_ptr_t sys_call_table[] ____cacheline_aligned = {
+	[0 ... __NR_syscalls - 1] = sys_ni_syscall,
 #include <asm-generic/unistd.h>
 };
 
-#pragma GCC diagnostic pop
+int syscall_table_size = sizeof(sys_call_table);

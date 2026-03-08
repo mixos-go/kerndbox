@@ -10,9 +10,10 @@
  */
 struct arch_thread {
 	struct faultinfo faultinfo;
+	unsigned long tls;        /* TPIDR_EL0 — set by clone(CLONE_SETTLS) */
 };
 
-#define INIT_ARCH_THREAD { .faultinfo = { 0, 0, 0 } }
+#define INIT_ARCH_THREAD { .faultinfo = { 0, 0, 0 }, .tls = 0 }
 
 /* Block native arm64/include/asm/processor.h — it uses a stack-top trick
  * for task_pt_regs that is wrong for UML. */
@@ -42,8 +43,15 @@ extern unsigned long get_thread_reg(int reg, jmp_buf *buf);
 
 #define STACKSLOTS_PER_LINE 4
 
+/*
+ * arch_flush_thread — called on exec/clone to push arch state to host process.
+ * For TLS: write TPIDR_EL0 via PTRACE_SETREGSET NT_ARM_TLS.
+ */
 static inline void arch_flush_thread(struct arch_thread *thread)
 {
+	/* TLS is flushed to the host userspace process by os_set_tls()
+	 * called from copy_thread → arch_set_tls path. The ptrace write
+	 * happens there. Nothing more needed here. */
 }
 
 static inline void arch_copy_thread(struct arch_thread *from,
