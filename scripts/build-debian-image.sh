@@ -20,11 +20,11 @@ die() { echo "[DevBox][ERROR] $*" >&2; exit 1; }
 
 check_deps() {
     local missing=()
-    for cmd in debootstrap qemu-img guestfish; do
+    for cmd in debootstrap mkfs.ext4; do
         command -v "$cmd" &>/dev/null || missing+=("$cmd")
     done
     [[ ${#missing[@]} -gt 0 ]] && \
-        die "Missing: ${missing[*]}. Install: sudo apt install debootstrap libguestfs-tools qemu-utils"
+        die "Missing: ${missing[*]}. Install: sudo apt install debootstrap e2fsprogs"
 }
 
 build_rootfs() {
@@ -40,7 +40,7 @@ build_rootfs() {
     local raw_img="$OUTPUT_DIR/debian-rootfs-${arch}.img"
     log "Building Debian ${DEBIAN_SUITE} rootfs for ${arch}..."
 
-    qemu-img create -f raw "$raw_img" "$ROOTFS_SIZE"
+    dd if=/dev/zero of="$raw_img" bs=1M count=4096 status=progress
     mkfs.ext4 -F -L "debian-devbox" "$raw_img"
 
     local mnt; mnt=$(mktemp -d)

@@ -1,0 +1,25 @@
+--- a/arch/um/include/asm/xor.h
++++ b/arch/um/include/asm/xor.h
+@@ -2,6 +2,15 @@
+ #ifndef _ASM_UM_XOR_H
+ #define _ASM_UM_XOR_H
+ 
++/*
++ * arm64 UML: the x86 XOR routines below require <asm/xor_64.h> which is
++ * x86-only and does not exist on arm64. Use the generic C implementation.
++ */
++#ifdef CONFIG_UML_ARM64
++#include <asm-generic/xor.h>
++#else
++/* x86 UML: use SSE/AVX-accelerated XOR routines */
++
+ #ifdef CONFIG_64BIT
+ #undef CONFIG_X86_32
+ #define TT_CPU_INF_XOR_DEFAULT (AVX_SELECT(&xor_block_sse_pf64))
+@@ -20,5 +29,6 @@
+ #define XOR_SELECT_TEMPLATE(x)	\
+ 	(time_travel_mode == TT_MODE_INFCPU ? TT_CPU_INF_XOR_DEFAULT : x)
+ #endif
++#endif /* !CONFIG_UML_ARM64 */
+ 
+ #endif

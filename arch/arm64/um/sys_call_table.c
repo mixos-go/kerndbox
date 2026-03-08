@@ -22,10 +22,19 @@
 #include <linux/syscalls.h>
 #include <asm/unistd.h>
 
-/* Suppress -Wcast-function-type: sys_call_ptr_t casts are inherent in the
- * UML syscall table design and cannot be avoided. Same as x86 UML. */
+/*
+ * Suppress -Wcast-function-type: sys_call_ptr_t casts are inherent in the
+ * UML syscall table design. Same as x86 UML.
+ *
+ * Suppress -Wmacro-redefined: asm-generic/unistd.h redefines __SC_3264,
+ * __SC_COMP, and the __NR_* symbols that were already defined via
+ * asm/unistd.h → unistd_64.h above. The redefinitions are intentional —
+ * we override their meaning for the table-building pass.
+ */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcast-function-type"
+#pragma GCC diagnostic ignored "-Wmacro-redefined"
+
 typedef long (*sys_call_ptr_t)(const struct pt_regs *);
 extern asmlinkage long sys_ni_syscall(void);
 
@@ -39,8 +48,8 @@ asmlinkage long sys_mmap(unsigned long addr, unsigned long len,
 #undef __SYSCALL
 #undef __SC_COMP
 #undef __SC_3264
-#define __SYSCALL(nr, sym)   [nr] = (sys_call_ptr_t)sym,
-#define __SC_COMP(nr, sym, csym) __SYSCALL(nr, sym)
+#define __SYSCALL(nr, sym)          [nr] = (sys_call_ptr_t)sym,
+#define __SC_COMP(nr, sym, csym)    __SYSCALL(nr, sym)
 #define __SC_3264(nr, sym32, sym64) __SYSCALL(nr, sym64)
 
 const sys_call_ptr_t sys_call_table[] = {
