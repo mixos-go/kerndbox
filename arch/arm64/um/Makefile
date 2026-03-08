@@ -10,7 +10,6 @@ obj-y = bugs.o \
         syscalls.o \
         sysrq.o \
         task_size.o \
-        strrchr.o \
         tls.o
 
 obj-y  += os-Linux/

@@ -5,6 +5,8 @@ on:
     branches: [main, master]
     paths:
       - 'scripts/build-debian-image.sh'
+      - 'scripts/build-arm64.sh'
+      - 'scripts/build-x86.sh'
       - '.github/workflows/build.yml'
   workflow_dispatch:
     inputs:
@@ -16,10 +18,6 @@ on:
         description: "What to build (rootfs | kernel | all)"
         required: false
         default: "all"
-      kconfig:
-        description: "Kernel config profile (defconfig | maxconfig)"
-        required: false
-        default: "defconfig"
 
 permissions: {}
 
@@ -65,7 +63,7 @@ jobs:
       - name: Build Debian rootfs (${{ matrix.arch }})
         run: |
           chmod +x scripts/build-debian-image.sh
-          sudo ./scripts/build-debian-image.sh ${{ matrix.arch }} --rootfs-only
+          sudo ./scripts/build-debian-image.sh ${{ matrix.arch }}
 
       - name: Upload rootfs artifact
         uses: actions/upload-artifact@v4
@@ -109,12 +107,14 @@ jobs:
             qemu-utils
 
       - name: Build UML kernel (${{ matrix.arch }})
-        env:
-          KCONFIG_PROFILE: ${{ github.event.inputs.kconfig || 'defconfig' }}
         run: |
-          chmod +x scripts/build-debian-image.sh
-          sudo KCONFIG_PROFILE=$KCONFIG_PROFILE \
-            ./scripts/build-debian-image.sh ${{ matrix.arch }} --kernel-only
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            chmod +x scripts/build-arm64.sh
+            sudo ./scripts/build-arm64.sh
+          else
+            chmod +x scripts/build-x86.sh
+            sudo ./scripts/build-x86.sh
+          fi
 
       - name: Upload kernel artifact
         uses: actions/upload-artifact@v4
@@ -290,7 +290,7 @@ jobs:
         id: kver
         run: |
           # Extract version from binary if available, else from build script
-          VER=$(grep 'KERNEL_VERSION=' scripts/build-debian-image.sh | head -1 | cut -d= -f2 | tr -d '"')
+          VER=$(grep 'UML_KERNEL_VERSION=' scripts/build-arm64.sh | grep -v ':-' | head -1 | cut -d= -f2 | tr -d '"')
           echo "version=${VER}" >> $GITHUB_OUTPUT
 
       - name: Publish to kernel-latest
