@@ -129,8 +129,11 @@ jobs:
           merge-multiple: true
           path: ./output
 
-      - name: Build release notes
-        id: notes
+      - name: Publish rootfs
+        id: publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
           VERSION="${{ github.event.inputs.version }}"
           LABEL="${{ github.event.inputs.label }}"
@@ -138,95 +141,57 @@ jobs:
           KERNEL_TAG="${{ github.event.inputs.kernel_tag }}"
           BUILT_AT="$(date '+%Y-%m-%d %H:%M UTC')"
           SHORT_SHA="${{ github.sha }}"
-          SHORT_SHA="${SHORT_SHA:0:7}"
+          SHORT_SHA="$(echo "$SHORT_SHA" | cut -c1-7)"
           REPO="${{ github.repository }}"
           TAG="bootstrap-${VERSION}"
 
           LABEL_BADGE=""
-          [ "$LABEL" = "latest"       ] && LABEL_BADGE="![latest](https://img.shields.io/badge/label-latest-brightgreen)"
-          [ "$LABEL" = "experimental" ] && LABEL_BADGE="![experimental](https://img.shields.io/badge/label-experimental-orange)"
+          if [ "$LABEL" = "latest" ]; then
+            LABEL_BADGE='![latest](https://img.shields.io/badge/label-latest-brightgreen)'
+          elif [ "$LABEL" = "experimental" ]; then
+            LABEL_BADGE='![experimental](https://img.shields.io/badge/label-experimental-orange)'
+          fi
 
           FILES_TABLE=""
-          [ -f output/debian-rootfs-aarch64.img ] && FILES_TABLE="${FILES_TABLE}\n| \`debian-rootfs-aarch64.img\` | Debian bookworm rootfs (modules baked in) | ARM64  | $(du -sh output/debian-rootfs-aarch64.img | cut -f1) |"
-          [ -f output/debian-rootfs-x86_64.img  ] && FILES_TABLE="${FILES_TABLE}\n| \`debian-rootfs-x86_64.img\`  | Debian bookworm rootfs (modules baked in) | x86_64 | $(du -sh output/debian-rootfs-x86_64.img | cut -f1) |"
-
-          cat > /tmp/release-notes.md << NOTES
-          # kerndbox Bootstrap ${VERSION}
-
-          ${LABEL_BADGE}
-
-          Debian **bookworm** rootfs for DevBox — ready to boot with UML. Kernel modules are baked in, \`modprobe\` works out of the box.
-
-          ---
-
-          ## 📦 Build Info
-
-          | Field          | Value |
-          |---|---|
-          | **Version**    | \`${VERSION}\` |
-          | **Label**      | \`${LABEL}\` |
-          | **Arch**       | \`${ARCH}\` |
-          | **Kernel tag** | [\`${KERNEL_TAG}\`](https://github.com/${REPO}/releases/tag/${KERNEL_TAG}) |
-          | **Commit**     | [\`${SHORT_SHA}\`](https://github.com/${REPO}/commit/${{ github.sha }}) |
-          | **Built**      | \`${BUILT_AT}\` |
-
-          ---
-
-          ## 📁 Files
-
-          | File | Description | Arch | Size |
-          |---|---|---|---|
-          $(echo -e "$FILES_TABLE" | sed '/^$/d')
-
-          ---
-
-          ## 🚀 Usage
-
-          ### Download
-          \`\`\`bash
-          gh release download bootstrap-${VERSION} --repo ${REPO} --pattern "debian-rootfs-aarch64.img"
-          \`\`\`
-
-          ### Boot with UML
-          \`\`\`bash
-          ./kernel-arm64 \\
-            ubd0=debian-rootfs-aarch64.img \\
-            root=/dev/ubda mem=512M con=fd:0,fd:1
-          \`\`\`
-
-          ### What's included
-          - Debian bookworm (stable)
-          - \`zsh\` + starship prompt
-          - \`openssh-server\`, \`curl\`, \`wget\`, \`socat\`
-          - \`vim-tiny\`, \`iproute2\`, \`net-tools\`
-          - Kernel modules from [\`${KERNEL_TAG}\`](https://github.com/${REPO}/releases/tag/${KERNEL_TAG}) — \`modprobe\` ready
-          NOTES
-
-          echo "notes_file=/tmp/release-notes.md" >> $GITHUB_OUTPUT
-          echo "tag=bootstrap-${VERSION}"         >> $GITHUB_OUTPUT
-
-      - name: Publish release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ steps.notes.outputs.tag }}"
-          LABEL="${{ github.event.inputs.label }}"
+          [ -f output/debian-rootfs-aarch64.img ] && FILES_TABLE="${FILES_TABLE}\n| \`debian-rootfs-aarch64.img\` | Debian bookworm rootfs | ARM64  | $(du -sh output/debian-rootfs-aarch64.img | cut -f1) |"
+          [ -f output/debian-rootfs-x86_64.img  ] && FILES_TABLE="${FILES_TABLE}\n| \`debian-rootfs-x86_64.img\`  | Debian bookworm rootfs | x86_64 | $(du -sh output/debian-rootfs-x86_64.img | cut -f1) |"
 
           RELEASE_FLAG="--prerelease"
           [ "$LABEL" = "latest" ] && RELEASE_FLAG="--latest"
 
           gh release create "$TAG" \
-            --title "Bootstrap ${{ github.event.inputs.version }}" \
-            --notes-file "${{ steps.notes.outputs.notes_file }}" \
+            --title "Bootstrap ${VERSION}" \
+            --notes "# kerndbox Bootstrap ${VERSION}
+
+          ${LABEL_BADGE}
+
+          Debian **bookworm** rootfs for DevBox — ready to boot with UML. Kernel modules are baked in, \`modprobe\` works out of the box.
+
+          **Arch:** \`${ARCH}\` | **Label:** \`${LABEL}\`
+          **Kernel tag:** [\`${KERNEL_TAG}\`](https://github.com/${REPO}/releases/tag/${KERNEL_TAG})
+          **Commit:** [\`${SHORT_SHA}\`](https://github.com/${REPO}/commit/${{ github.sha }})
+          **Built:** \`${BUILT_AT}\`
+
+          ---
+
+          $(echo -e "$FILES_TABLE" | sed '/^$/d')
+
+          ---
+
+          \`\`\`bash
+          gh release download bootstrap-${VERSION} --repo ${REPO} --pattern 'debian-rootfs-aarch64.img'
+          ./kernel-arm64 ubd0=debian-rootfs-aarch64.img root=/dev/ubda mem=512M con=fd:0,fd:1
+          \`\`\`" \
             $RELEASE_FLAG \
             2>/dev/null || \
           gh release edit "$TAG" \
-            --title "Bootstrap ${{ github.event.inputs.version }}" \
-            --notes-file "${{ steps.notes.outputs.notes_file }}" \
+            --title "Bootstrap ${VERSION}" \
+            --notes "updated" \
             $RELEASE_FLAG
 
           for f in output/debian-rootfs-*.img; do
             [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber
           done
 
-          echo "✓ Published: https://github.com/${{ github.repository }}/releases/tag/${TAG}"
+          echo "✓ Published: https://github.com/${REPO}/releases/tag/${TAG}"
+

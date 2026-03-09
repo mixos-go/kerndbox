@@ -110,8 +110,10 @@ jobs:
             | head -1 | sed 's/.*:-\(.*\)}/\1/')
           echo "version=${VER}" >> $GITHUB_OUTPUT
 
-      - name: Build release notes
-        id: notes
+      - name: Publish release
+        id: publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           VERSION="${{ github.event.inputs.version }}"
@@ -137,83 +139,40 @@ jobs:
           [ -f output/modules-arm64.tar.gz  ] && FILES_TABLE="${FILES_TABLE}\n| \`modules-arm64.tar.gz\`  | Kernel modules    | ARM64  | $(du -sh output/modules-arm64.tar.gz | cut -f1) |"
           [ -f output/modules-x86_64.tar.gz ] && FILES_TABLE="${FILES_TABLE}\n| \`modules-x86_64.tar.gz\` | Kernel modules    | x86_64 | $(du -sh output/modules-x86_64.tar.gz | cut -f1) |"
 
-          cat > /tmp/release-notes.md << NOTES
-          # kerndbox Kernel ${VERSION}
-
-          ${LABEL_BADGE}
-
-          User Mode Linux kernel for **DevBox** — runs Linux in userspace via \`ptrace\`, no KVM, no root required.
-
-          ---
-
-          ## Build Info
-
-          | Field       | Value |
-          |---|---|
-          | **Version** | \`${VERSION}\` |
-          | **Label**   | \`${LABEL}\` |
-          | **Linux**   | \`${KVER}\` |
-          | **Arch**    | \`${ARCH}\` |
-          | **Commit**  | [\`${SHORT_SHA}\`](https://github.com/${REPO}/commit/${{ github.sha }}) |
-          | **Built**   | \`${BUILT_AT}\` |
-
-          ---
-
-          ## Files
-
-          | File | Description | Arch | Size |
-          |---|---|---|---|
-          $(echo -e "$FILES_TABLE" | sed '/^$/d')
-
-          ---
-
-          ## Usage
-
-          ### Download
-          \`\`\`bash
-          # Kernel binary only
-          gh release download ${TAG} --repo ${REPO} --pattern "kernel-arm64"
-
-          # Kernel + modules
-          gh release download ${TAG} --repo ${REPO} \
-            --pattern "kernel-arm64" \
-            --pattern "modules-arm64.tar.gz"
-          \`\`\`
-
-          ### Boot
-          \`\`\`bash
-          chmod +x kernel-arm64
-          ./kernel-arm64 ubd0=rootfs.img root=/dev/ubda mem=512M con=fd:0,fd:1
-          \`\`\`
-          NOTES
-
-          echo "notes_file=/tmp/release-notes.md" >> $GITHUB_OUTPUT
-          echo "tag=kernel-${VERSION}"            >> $GITHUB_OUTPUT
-
-      - name: Publish release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ steps.notes.outputs.tag }}"
-          LABEL="${{ github.event.inputs.label }}"
-
-          # --latest     → GitHub marks this as the latest stable release
-          # --prerelease → shown as pre-release, does NOT become latest
           RELEASE_FLAG="--prerelease"
           [ "$LABEL" = "latest" ] && RELEASE_FLAG="--latest"
 
           gh release create "$TAG" \
-            --title "Kernel ${{ github.event.inputs.version }}" \
-            --notes-file "${{ steps.notes.outputs.notes_file }}" \
+            --title "Kernel ${VERSION}" \
+            --notes "# kerndbox Kernel ${VERSION}
+
+          ${LABEL_BADGE}
+
+          User Mode Linux kernel for **DevBox** via \`ptrace\`, no KVM, no root required.
+
+          **Linux:** \`${KVER}\` | **Arch:** \`${ARCH}\` | **Label:** \`${LABEL}\`
+          **Commit:** [\`${SHORT_SHA}\`](https://github.com/${REPO}/commit/${{ github.sha }})
+          **Built:** \`${BUILT_AT}\`
+
+          ---
+
+          $(echo -e "$FILES_TABLE" | sed '/^$/d')
+
+          ---
+
+          \`\`\`bash
+          gh release download ${TAG} --repo ${REPO} --pattern 'kernel-arm64'
+          \`\`\`" \
             $RELEASE_FLAG \
             2>/dev/null || \
           gh release edit "$TAG" \
-            --title "Kernel ${{ github.event.inputs.version }}" \
-            --notes-file "${{ steps.notes.outputs.notes_file }}" \
+            --title "Kernel ${VERSION}" \
+            --notes "updated" \
             $RELEASE_FLAG
 
           for f in output/kernel-* output/modules-*.tar.gz; do
             [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber
           done
 
-          echo "✓ Published: https://github.com/${{ github.repository }}/releases/tag/${TAG}"
+          echo "✓ Published: https://github.com/${REPO}/releases/tag/${TAG}"
+
