@@ -86,3 +86,20 @@ DEST="$OUTPUT_DIR/linux-uml-x86_64"
 cp "$UML_BIN" "$DEST"
 chmod +x "$DEST"
 log "Done: linux-uml-x86_64 ($(du -sh "$DEST" | cut -f1))"
+
+# ── Package kernel modules ────────────────────────────────────────────────────
+MODULES_STAGING="$BUILD_DIR/modules-staging"
+rm -rf "$MODULES_STAGING"
+
+log "Installing kernel modules..."
+make -C "$SRC_DIR" O="$BUILD_DIR" ARCH=um \
+    INSTALL_MOD_PATH="$MODULES_STAGING" \
+    INSTALL_MOD_STRIP=1 \
+    modules_install
+
+find "$MODULES_STAGING" -name "build" -o -name "source" | xargs rm -f 2>/dev/null || true
+
+MODULES_TAR="$OUTPUT_DIR/modules-x86_64.tar.gz"
+tar -czf "$MODULES_TAR" -C "$MODULES_STAGING" lib/
+log "Done: modules-x86_64.tar.gz ($(du -sh "$MODULES_TAR" | cut -f1))"
+log "      $(find "$MODULES_STAGING" -name "*.ko" | wc -l) modules packaged"

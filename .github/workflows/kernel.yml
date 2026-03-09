@@ -1,0 +1,200 @@
+name: Build Kernel
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'kernel/**'
+      - 'scripts/build-arm64.sh'
+      - 'scripts/build-x86.sh'
+      - '.github/workflows/kernel.yml'
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: "Architecture (aarch64 | x86_64 | all)"
+        required: false
+        default: "all"
+
+permissions: {}
+
+concurrency:
+  group: kernel-${{ github.ref }}
+  cancel-in-progress: true
+
+# UML cannot be cross-compiled — ARCH=um always targets the host CPU's ABI.
+#   aarch64 → ubuntu-24.04-arm  (GitHub-hosted ARM64)
+#   x86_64  → ubuntu-24.04      (GitHub-hosted x86_64)
+
+jobs:
+
+  # ── Build kernel ─────────────────────────────────────────────────────────────
+  build-kernel:
+    name: Kernel (${{ matrix.arch }})
+    permissions:
+      contents: read
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+          - arch: x86_64
+            runner: ubuntu-24.04
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential flex bison libssl-dev libelf-dev bc
+
+      - name: Build UML kernel (${{ matrix.arch }})
+        run: |
+          if [ "${{ matrix.arch }}" = "aarch64" ]; then
+            chmod +x scripts/build-arm64.sh
+            sudo ./scripts/build-arm64.sh
+          else
+            chmod +x scripts/build-x86.sh
+            sudo ./scripts/build-x86.sh
+          fi
+
+      - name: Upload kernel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-${{ matrix.arch }}
+          path: output/linux-uml-${{ matrix.arch }}
+          retention-days: 7
+
+  # ── Boot test — uses latest published rootfs ─────────────────────────────────
+  # Rootfs diambil dari release bootstrap-latest sehingga kernel CI tidak perlu
+  # build ulang rootfs setiap kali kernel berubah.
+  boot-test:
+    name: Boot test (${{ matrix.arch }})
+    needs: build-kernel
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+          - arch: x86_64
+            runner: ubuntu-24.04
+      fail-fast: false
+
+    steps:
+      - name: Download kernel artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: kernel-${{ matrix.arch }}
+          path: ./output
+
+      - name: Download rootfs from bootstrap-latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download bootstrap-latest \
+            --repo ${{ github.repository }} \
+            --pattern "debian-rootfs-${{ matrix.arch }}.img" \
+            --dir ./output
+
+      - name: Boot UML kernel (Debian rootfs)
+        run: |
+          chmod +x output/linux-uml-${{ matrix.arch }}
+
+          set +e
+          echo 'echo DEVBOX_BOOT_OK && poweroff -f' | \
+          timeout 90 output/linux-uml-${{ matrix.arch }} \
+            ubd0=output/debian-rootfs-${{ matrix.arch }}.img \
+            root=/dev/ubda \
+            rootfstype=ext4 \
+            mem=512M \
+            init=/bin/sh \
+            con=fd:0,fd:1 \
+            ssl=null \
+            2>&1 | tee boot.log
+          EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          echo "=== UML exit code: ${EXIT_CODE} ==="
+
+      - name: Check boot succeeded
+        run: |
+          if grep -q "DEVBOX_BOOT_OK" boot.log; then
+            echo "✅ Boot test PASSED — Debian rootfs reached userspace"
+          else
+            echo "❌ Boot test FAILED — DEVBOX_BOOT_OK not found"
+            grep -q "Kernel panic"          boot.log && grep "Kernel panic" boot.log | head -3 || true
+            grep -q "VFS: Cannot open root" boot.log && echo "   → Root filesystem mount failed" || true
+            grep -q "No init found"         boot.log && echo "   → init=/bin/sh not found"       || true
+            exit 1
+          fi
+
+      - name: Upload boot log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-log-kernel-${{ matrix.arch }}
+          path: boot.log
+          retention-days: 7
+
+  # ── Publish kernel → kernel-latest ──────────────────────────────────────────
+  publish-kernel:
+    name: Publish kernel
+    permissions:
+      contents: write
+    needs: [build-kernel, boot-test]
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download kernel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: kernel-*
+          merge-multiple: true
+          path: ./output
+
+      - name: List output
+        run: ls -lh output/
+
+      - name: Read kernel version
+        id: kver
+        run: |
+          VER=$(grep 'UML_KERNEL_VERSION=' scripts/build-arm64.sh \
+            | grep -v ':-' | head -1 | cut -d= -f2 | tr -d '"')
+          echo "version=${VER}" >> $GITHUB_OUTPUT
+
+      - name: Publish to kernel-latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BUILT_AT="$(date '+%Y-%m-%d %H:%M UTC')"
+          KVER="${{ steps.kver.outputs.version }}"
+
+          git push origin :refs/tags/kernel-latest 2>/dev/null || true
+          gh release create kernel-latest \
+            --title "UML Kernel ${KVER} (latest) — ${BUILT_AT}" \
+            --notes "User Mode Linux kernel for DevBox.
+
+          **Kernel:** Linux ${KVER}
+          **Built:** ${BUILT_AT}
+          **Commit:** ${{ github.sha }}
+
+          Files:
+          - \`linux-uml-aarch64\` — UML kernel binary for ARM64 Android
+          - \`linux-uml-x86_64\`  — UML kernel binary for x86_64
+
+          Bundled inside DevBox APK (assets/). Extracted on first launch.
+          No KVM needed. No root needed. Runs entirely in userspace via ptrace.
+
+          > Rolling tag — always points to latest build." \
+            --prerelease
+
+          for f in output/linux-uml-*; do
+            gh release upload kernel-latest "$f" --clobber
+          done

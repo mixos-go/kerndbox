@@ -79,3 +79,23 @@ DEST="$OUTPUT_DIR/linux-uml-aarch64"
 cp "$UML_BIN" "$DEST"
 chmod +x "$DEST"
 log "Done: linux-uml-aarch64 ($(du -sh "$DEST" | cut -f1))"
+
+# ── Package kernel modules ────────────────────────────────────────────────────
+# Install modules into a staging dir, then tar them up.
+# The rootfs boot script will extract this tarball into / on first boot.
+MODULES_STAGING="$BUILD_DIR/modules-staging"
+rm -rf "$MODULES_STAGING"
+
+log "Installing kernel modules..."
+make -C "$SRC_DIR" O="$BUILD_DIR" ARCH=um \
+    INSTALL_MOD_PATH="$MODULES_STAGING" \
+    INSTALL_MOD_STRIP=1 \
+    modules_install
+
+# Remove build/source symlinks (they point to CI paths, useless in rootfs)
+find "$MODULES_STAGING" -name "build" -o -name "source" | xargs rm -f 2>/dev/null || true
+
+MODULES_TAR="$OUTPUT_DIR/modules-aarch64.tar.gz"
+tar -czf "$MODULES_TAR" -C "$MODULES_STAGING" lib/
+log "Done: modules-aarch64.tar.gz ($(du -sh "$MODULES_TAR" | cut -f1))"
+log "      $(find "$MODULES_STAGING" -name "*.ko" | wc -l) modules packaged"

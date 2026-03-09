@@ -10,7 +10,6 @@ set -euo pipefail
 
 ARCH="${1:-all}"
 OUTPUT_DIR="$(pwd)/output"
-ROOTFS_SIZE="4G"
 DEBIAN_SUITE="bookworm"
 
 mkdir -p "$OUTPUT_DIR"
@@ -20,59 +19,58 @@ die() { echo "[DevBox][ERROR] $*" >&2; exit 1; }
 
 check_deps() {
     local missing=()
-    for cmd in debootstrap; do
+    for cmd in debootstrap mke2fs; do
         command -v "$cmd" &>/dev/null || missing+=("$cmd")
     done
-    # mkfs.ext4 may be in /sbin (not always in PATH)
-    if ! command -v mkfs.ext4 &>/dev/null && ! [ -x /sbin/mkfs.ext4 ]; then
-        missing+=(mkfs.ext4)
-    fi
     [[ ${#missing[@]} -gt 0 ]] && \
         die "Missing: ${missing[*]}. Install: sudo apt install debootstrap e2fsprogs"
 }
 
-# Resolve mkfs.ext4 path (may be in /sbin)
-MKFS_EXT4="$(command -v mkfs.ext4 2>/dev/null || echo /sbin/mkfs.ext4)"
-
 build_rootfs() {
     local arch="$1"
-    local deb_arch qemu_arch
+    local deb_arch host_arch
+
+    host_arch="$(uname -m)"
+    [[ "$host_arch" == "arm64" ]] && host_arch="aarch64"
 
     case "$arch" in
-        aarch64) deb_arch="arm64";  qemu_arch="aarch64" ;;
-        x86_64)  deb_arch="amd64";  qemu_arch="" ;;
+        aarch64) deb_arch="arm64"  ;;
+        x86_64)  deb_arch="amd64"  ;;
         *) die "Unknown arch: $arch" ;;
     esac
 
     local raw_img="$OUTPUT_DIR/debian-rootfs-${arch}.img"
     log "Building Debian ${DEBIAN_SUITE} rootfs for ${arch}..."
 
-    truncate -s 4G "$raw_img"
-    "$MKFS_EXT4" -F -L "debian-devbox" "$raw_img"
+    # ── Step 1: debootstrap into a temp directory ──────────────────────────
+    local work_dir
+    work_dir="$(mktemp -d)"
+    log "debootstrap stage: $work_dir"
 
-    local mnt; mnt=$(mktemp -d)
-    sudo mount -o loop "$raw_img" "$mnt"
-
-    [[ -n "$qemu_arch" ]] && \
-        sudo cp "/usr/bin/qemu-${qemu_arch}-static" "$mnt/usr/bin/" 2>/dev/null || true
+    # Copy qemu static binary for cross-arch debootstrap only
+    if [[ "$arch" != "$host_arch" ]]; then
+        local qemu_bin="/usr/bin/qemu-${arch}-static"
+        [[ -f "$qemu_bin" ]] || die "Cross-build needs $qemu_bin (install qemu-user-static)"
+        cp "$qemu_bin" "$work_dir/usr/bin/" 2>/dev/null || true
+    fi
 
     log "Running debootstrap (${deb_arch})..."
-    sudo debootstrap \
+    debootstrap \
         --arch="$deb_arch" \
         --include="openssh-server,curl,socat,sudo,bash,zsh,coreutils,util-linux,net-tools,iproute2,procps,less,vim-tiny,ca-certificates,wget" \
-        "$DEBIAN_SUITE" "$mnt" "https://deb.debian.org/debian"
+        "$DEBIAN_SUITE" "$work_dir" "https://deb.debian.org/debian"
 
     log "Configuring rootfs..."
-    echo "devbox" | sudo tee "$mnt/etc/hostname" >/dev/null
+    echo "devbox" > "$work_dir/etc/hostname"
 
-    sudo tee "$mnt/etc/fstab" >/dev/null <<'FSTAB'
+    cat > "$work_dir/etc/fstab" << 'FSTAB'
 /dev/ubda   /       ext4    errors=remount-ro   0   1
 proc        /proc   proc    defaults            0   0
 sysfs       /sys    sysfs   defaults            0   0
 tmpfs       /tmp    tmpfs   size=128M           0   0
 FSTAB
 
-    sudo tee "$mnt/etc/network/interfaces" >/dev/null <<'NET'
+    cat > "$work_dir/etc/network/interfaces" << 'NET'
 auto lo
 iface lo inet loopback
 
@@ -80,22 +78,22 @@ auto eth0
 iface eth0 inet dhcp
 NET
 
-    sudo chroot "$mnt" /bin/bash -c "echo 'root:devbox' | chpasswd"
-    sudo sed -i 's/#*PermitRootLogin.*/PermitRootLogin yes/'              "$mnt/etc/ssh/sshd_config"
-    sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' "$mnt/etc/ssh/sshd_config"
-    sudo chroot "$mnt" /bin/bash -c "systemctl enable ssh" 2>/dev/null || true
+    chroot "$work_dir" /bin/bash -c "echo 'root:devbox' | chpasswd"
+    sed -i 's/#*PermitRootLogin.*/PermitRootLogin yes/'              "$work_dir/etc/ssh/sshd_config"
+    sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' "$work_dir/etc/ssh/sshd_config"
+    chroot "$work_dir" /bin/bash -c "systemctl enable ssh" 2>/dev/null || true
 
     log "Installing starship prompt..."
-    sudo chroot "$mnt" /bin/bash -c "
-        curl -sS https://starship.rs/install.sh -o /tmp/starship-install.sh
+    chroot "$work_dir" /bin/bash -c "
+        curl -fsSL https://starship.rs/install.sh -o /tmp/starship-install.sh
         chmod +x /tmp/starship-install.sh
         /tmp/starship-install.sh --yes --bin-dir /usr/local/bin
         rm -f /tmp/starship-install.sh
     " 2>/dev/null || log "WARNING: starship install failed — run manually"
 
-    sudo chroot "$mnt" /bin/bash -c "chsh -s /bin/zsh root" 2>/dev/null || true
+    chroot "$work_dir" /bin/bash -c "chsh -s /bin/zsh root" 2>/dev/null || true
 
-    sudo tee "$mnt/root/.zshrc" >/dev/null <<'ZSHRC'
+    cat > "$work_dir/root/.zshrc" << 'ZSHRC'
 export TERM="xterm-256color"
 export LANG="en_US.UTF-8"
 export EDITOR="vim"
@@ -114,15 +112,33 @@ alias grep='grep --color=auto'
 eval "$(starship init zsh)"
 ZSHRC
 
-    sudo mkdir -p "$mnt/mnt/devbox"
+    mkdir -p "$work_dir/mnt/devbox"
 
-    [[ -n "$qemu_arch" ]] && sudo rm -f "$mnt/usr/bin/qemu-${qemu_arch}-static"
-    sudo umount "$mnt"; rmdir "$mnt"
+    # Remove qemu binary from rootfs before packing
+    if [[ "$arch" != "$host_arch" ]]; then
+        rm -f "$work_dir/usr/bin/qemu-${arch}-static"
+    fi
 
+    # ── Step 2: pack directory into ext4 image (no loop mount needed) ──────
+    log "Creating ext4 image..."
+    # Calculate size: used space + 30% headroom, minimum 1G
+    local used_kb
+    used_kb=$(du -sk "$work_dir" | cut -f1)
+    local img_kb=$(( used_kb * 13 / 10 ))   # +30%
+    (( img_kb < 1048576 )) && img_kb=1048576  # minimum 1G
+
+    # mkfs.ext4 can write directly to a new image file
+    truncate -s "${img_kb}K" "$raw_img"
+    mke2fs -t ext4 -F -L "debian-devbox" \
+        -d "$work_dir" \
+        "$raw_img"
+
+    rm -rf "$work_dir"
     log "Done: $raw_img ($(du -sh "$raw_img" | cut -f1) on disk)"
 }
 
 check_deps
+log "=== Starting rootfs build for: ${ARCH} ==="
 
 case "$ARCH" in
     aarch64) build_rootfs aarch64 ;;
