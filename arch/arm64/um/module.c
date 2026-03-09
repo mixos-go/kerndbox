@@ -3,27 +3,33 @@
  * arch/arm64/um/module.c — ELF module relocation for UML arm64.
  *
  * UML runs entirely in userspace: all modules are loaded into the same
- * process virtual address space as the UML kernel binary.  There is no
- * need for PLT trampolines or ADRP veneers because the distance between
- * any two addresses in a single userspace process fits comfortably inside
- * a 26-bit branch offset on modern 64-bit Linux (mmap base > 512 MB,
- * but module area is allocated nearby via vmalloc-equivalent).
+ * process virtual address space as the UML kernel binary. No PLT
+ * trampolines or ADRP veneers are needed.
  *
- * We therefore implement apply_relocate_add() from scratch, using only
- * the standard AArch64 ELF relocation types that GCC/clang actually emit
- * for kernel modules.  Helper logic is adapted from
- * arch/arm64/kernel/module.c (same SPDX, same author lineage).
+ * Relocation constants are defined here directly from the AArch64 ELF
+ * specification. The native arm64 asm/elf.h cannot be included in UML
+ * because it is blocked by our arch/arm64/um/asm/elf.h override.
  */
 
-#include <linux/elf.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/moduleloader.h>
 
+/* AArch64 ELF relocation type constants (from ARM IHI0056, Table 4-2) */
+#define R_ARM_NONE          0
+#define R_AARCH64_NONE      256
+#define R_AARCH64_ABS64     257
+#define R_AARCH64_ABS32     258
+#define R_AARCH64_ABS16     259
+#define R_AARCH64_PREL64    260
+#define R_AARCH64_PREL32    261
+#define R_AARCH64_PREL16    262
+#define R_AARCH64_JUMP26    282
+#define R_AARCH64_CALL26    283
+
 enum aarch64_reloc_op {
 	RELOC_OP_ABS,
 	RELOC_OP_PREL,
-	RELOC_OP_PAGE,
 };
 
 static s64 do_reloc(enum aarch64_reloc_op op, __le32 *place, u64 val)
@@ -31,8 +37,6 @@ static s64 do_reloc(enum aarch64_reloc_op op, __le32 *place, u64 val)
 	switch (op) {
 	case RELOC_OP_ABS:  return (s64)val;
 	case RELOC_OP_PREL: return (s64)(val - (u64)place);
-	case RELOC_OP_PAGE: return (s64)((val & ~0xfffULL) -
-					 ((u64)place & ~0xfffULL));
 	}
 	return 0;
 }
@@ -65,10 +69,6 @@ static int reloc_data(enum aarch64_reloc_op op, void *place, u64 val, int len)
 	return 0;
 }
 
-/*
- * Encode a 26-bit PC-relative branch offset (CALL26 / JUMP26).
- * In UML we assume the target is reachable — no PLT needed.
- */
 static int reloc_insn_imm26(__le32 *place, u64 val)
 {
 	s64 sval = (s64)(val - (u64)place) >> 2;
@@ -100,17 +100,12 @@ int apply_relocate_add(Elf64_Shdr *sechdrs,
 		int ovf = 0;
 
 		switch (ELF64_R_TYPE(rel[i].r_info)) {
-		/* Null */
 		case R_ARM_NONE:
 		case R_AARCH64_NONE:
 			break;
-
-		/* 64-bit absolute */
 		case R_AARCH64_ABS64:
 			ovf = reloc_data(RELOC_OP_ABS, loc, val, 64);
 			break;
-
-		/* 32-bit absolute / PC-relative */
 		case R_AARCH64_ABS32:
 			ovf = reloc_data(RELOC_OP_ABS, loc, val, 32);
 			break;
@@ -126,13 +121,10 @@ int apply_relocate_add(Elf64_Shdr *sechdrs,
 		case R_AARCH64_PREL16:
 			ovf = reloc_data(RELOC_OP_PREL, loc, val, 16);
 			break;
-
-		/* Branch instructions — no PLT in UML */
 		case R_AARCH64_JUMP26:
 		case R_AARCH64_CALL26:
 			ovf = reloc_insn_imm26(loc, val);
 			break;
-
 		default:
 			pr_err("%s: unsupported RELA reloc %llu\n",
 			       me->name, ELF64_R_TYPE(rel[i].r_info));
