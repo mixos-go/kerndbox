@@ -40,4 +40,6 @@ typedef struct __jmp_buf jmp_buf[1];
 #define JB_IP 11  /* lr (return address) at offset 88 = index 11 */
 #define JB_SP 12  /* sp at offset 96 = index 12 */
 
+unsigned long get_thread_reg(int reg, jmp_buf *buf);
+
 #endif /* __ARCHSETJMP_ARM64_H */

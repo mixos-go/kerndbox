@@ -24,6 +24,9 @@ void remove_sigstack(void);
 void (*arch_get_signal_handler(int sig))(int, siginfo_t *, void *);
 void arch_do_signal(struct pt_regs *regs, int sig);
 
+/* tls.c */
+int os_set_tls(int pid, unsigned long tls);
+
 /* prctl.c */
 void arch_prctl_defaults(void);
 

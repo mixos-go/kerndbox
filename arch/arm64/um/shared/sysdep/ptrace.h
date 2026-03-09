@@ -80,5 +80,6 @@ struct uml_pt_regs {
 
 
 extern void arch_init_registers(int pid);
+extern int user_context(unsigned long sp);
 
 #endif /* __SYSDEP_ARM64_PTRACE_H */

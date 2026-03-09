@@ -21,7 +21,6 @@
  *   x0       = return value
  */
 
-#include <linux/syscalls.h>
 #include <linux/cache.h>
 #include <asm/syscall.h>   /* sys_call_ptr_t = long(*)(ulong x6) */
 
