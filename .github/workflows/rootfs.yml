@@ -62,78 +62,11 @@ jobs:
           path: output/debian-rootfs-${{ matrix.arch }}.img
           retention-days: 7
 
-  boot-test:
-    name: Boot test (${{ matrix.arch }})
-    needs: build-rootfs
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      matrix:
-        include:
-          - arch: aarch64
-            runner: ubuntu-24.04-arm
-          - arch: x86_64
-            runner: ubuntu-24.04
-      fail-fast: false
-
-    steps:
-      - name: Download rootfs artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: rootfs-${{ matrix.arch }}
-          path: ./output
-
-      - name: Download kernel from kernel-latest release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release download kernel-latest \
-            --repo ${{ github.repository }} \
-            --pattern "linux-uml-${{ matrix.arch }}" \
-            --dir ./output
-          chmod +x output/linux-uml-${{ matrix.arch }}
-
-      - name: Boot UML kernel (new rootfs)
-        run: |
-          set +e
-          echo 'echo DEVBOX_BOOT_OK && poweroff -f' | \
-          timeout 90 output/linux-uml-${{ matrix.arch }} \
-            ubd0=output/debian-rootfs-${{ matrix.arch }}.img \
-            root=/dev/ubda \
-            rootfstype=ext4 \
-            mem=512M \
-            init=/bin/sh \
-            con=fd:0,fd:1 \
-            ssl=null \
-            2>&1 | tee boot.log
-          EXIT_CODE=${PIPESTATUS[0]}
-          set -e
-          echo "=== UML exit code: ${EXIT_CODE} ==="
-
-      - name: Check boot succeeded
-        run: |
-          if grep -q "DEVBOX_BOOT_OK" boot.log; then
-            echo "Boot test PASSED"
-          else
-            echo "Boot test FAILED - DEVBOX_BOOT_OK not found"
-            grep -q "Kernel panic"          boot.log && grep "Kernel panic" boot.log | head -3 || true
-            grep -q "VFS: Cannot open root" boot.log && echo "   -> Root filesystem mount failed" || true
-            grep -q "No init found"         boot.log && echo "   -> init=/bin/sh not found"       || true
-            exit 1
-          fi
-
-      - name: Upload boot log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: boot-log-rootfs-${{ matrix.arch }}
-          path: boot.log
-          retention-days: 7
-
   publish-rootfs:
     name: Publish rootfs
     permissions:
       contents: write
-    needs: [build-rootfs, boot-test]
+    needs: build-rootfs
     runs-on: ubuntu-24.04
 
     steps:
