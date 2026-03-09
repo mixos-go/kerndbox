@@ -112,6 +112,7 @@ jobs:
 
       - name: Build release notes
         id: notes
+        shell: bash
         run: |
           VERSION="${{ github.event.inputs.version }}"
           LABEL="${{ github.event.inputs.label }}"
@@ -119,7 +120,7 @@ jobs:
           KVER="${{ steps.kver.outputs.version }}"
           BUILT_AT="$(date '+%Y-%m-%d %H:%M UTC')"
           SHORT_SHA="${{ github.sha }}"
-          SHORT_SHA="${SHORT_SHA:0:7}"
+          SHORT_SHA="$(echo "$SHORT_SHA" | cut -c1-7)"
           REPO="${{ github.repository }}"
           TAG="kernel-${VERSION}"
 
