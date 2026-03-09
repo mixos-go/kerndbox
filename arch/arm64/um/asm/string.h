@@ -5,7 +5,7 @@
  * Override arm64's native string.h for UML.
  *
  * arm64's real string.h declares __HAVE_ARCH_* for functions implemented in
- * arch/arm64/lib/*.[S] (NEON assembly). Those .S files are NOT compiled in UML
+ * arm64 NEON assembly files under arch/arm64/lib/ are NOT compiled in UML
  * mode, so we must not claim to have those implementations — otherwise modules
  * would get undefined symbol errors.
  *

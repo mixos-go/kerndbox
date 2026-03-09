@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * arch/arm64/um/os-Linux/uaccess.c - stub for UML arm64.
+ * arch/arm64/um/os-Linux/uaccess.c - arm64 UML stub.
+ *
+ * arch_fixup() lives in arch/arm64/um/fault.c (kernel-side).
+ * No os-Linux implementation needed for arm64.
  */
-
-#include "os.h"
-#include "arm64_um_os.h"
-
-int arch_fixup(unsigned long address, struct uml_pt_regs *regs)
-{
-	return 0;
-}

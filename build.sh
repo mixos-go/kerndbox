@@ -5,7 +5,7 @@
 #   ./build.sh              # build kernel
 #   ./build.sh --shell      # drop into arm64 container for debugging
 #
-# Output:
+# Outut:
 #   output/linux-uml-aarch64   — UML kernel binary
 #   logs/build-<timestamp>.log — full timestamped log
 
