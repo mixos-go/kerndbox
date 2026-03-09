@@ -125,8 +125,11 @@ jobs:
           TAG="kernel-${VERSION}"
 
           LABEL_BADGE=""
-          [ "$LABEL" = "latest"       ] && LABEL_BADGE="![latest](https://img.shields.io/badge/label-latest-brightgreen)"
-          [ "$LABEL" = "experimental" ] && LABEL_BADGE="![experimental](https://img.shields.io/badge/label-experimental-orange)"
+          if [ "$LABEL" = "latest" ]; then
+            LABEL_BADGE='![latest](https://img.shields.io/badge/label-latest-brightgreen)'
+          elif [ "$LABEL" = "experimental" ]; then
+            LABEL_BADGE='![experimental](https://img.shields.io/badge/label-experimental-orange)'
+          fi
 
           FILES_TABLE=""
           [ -f output/kernel-arm64          ] && FILES_TABLE="${FILES_TABLE}\n| \`kernel-arm64\`          | UML kernel binary | ARM64  | $(du -sh output/kernel-arm64 | cut -f1) |"
