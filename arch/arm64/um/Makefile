@@ -11,7 +11,8 @@ obj-y = bugs.o \
         syscalls.o \
         sysrq.o \
         task_size.o \
-        tls.o
+        tls.o \
+        module.o
 
 obj-y  += os-Linux/
 

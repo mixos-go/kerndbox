@@ -1,42 +1,36 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * arch/arm64/um/tls.c — TLS support for UML arm64
+ * arch/arm64/um/os-Linux/tls.c
  *
- * arm64 uses TPIDR_EL0 for TLS (thread-local storage pointer).
- * In UML, the guest runs as a ptrace'd host process.
- * We set TPIDR_EL0 via PTRACE_SETREGSET NT_ARM_TLS on clone(CLONE_SETTLS).
+ * Set TPIDR_EL0 (arm64 TLS register) for a ptrace'd UML guest process.
  *
- * Without this: every pthread_create() leaves TLS = 0 → immediate crash.
+ * The host kernel stores TPIDR_EL0 in the guest's user_pt_regs and
+ * restores it on every context switch. We write it via PTRACE_SETREGSET
+ * with note type NT_ARM_TLS (0x401).
+ *
+ * This is called once per clone(CLONE_SETTLS) — i.e., every pthread_create().
+ * Without it, all threads share TLS pointer 0 → immediate SIGSEGV.
  */
 
-#include <linux/sched.h>
-#include <sysdep/tls.h>
-#include <os.h>
-#include <skas.h>     /* userspace_pid[] */
+#include <errno.h>
+#include <sys/ptrace.h>
+#include <sys/uio.h>
+#include <elf.h>          /* NT_ARM_TLS = 0x401 */
+#include "os.h"
+#include "arm64_um_os.h"
 
-extern int os_set_tls(int pid, unsigned long tls);
+#ifndef NT_ARM_TLS
+#define NT_ARM_TLS 0x401
+#endif
 
-int arch_set_tls(struct task_struct *t, unsigned long tls)
+int os_set_tls(int pid, unsigned long tls)
 {
-	unsigned int cpu;
-	int ret;
+	struct iovec iov = {
+		.iov_base = &tls,
+		.iov_len  = sizeof(tls),
+	};
 
-	/* Store in arch state for restore after context switch */
-	t->thread.arch.tls = tls;
-
-	/*
-	 * Push to the ptrace'd host process immediately.
-	 * userspace_pid[cpu] is the host PID of the UML guest process.
-	 */
-	cpu = task_cpu(t);
-	ret = os_set_tls(userspace_pid[cpu], tls);
-	if (ret)
-		return ret;
-
+	if (ptrace(PTRACE_SETREGSET, pid, (void *)(long)NT_ARM_TLS, &iov) < 0)
+		return -errno;
 	return 0;
-}
-
-void clear_flushed_tls(struct task_struct *task)
-{
-	task->thread.arch.tls = 0;
 }
