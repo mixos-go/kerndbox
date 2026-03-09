@@ -1,5 +1,64 @@
-*.zip
-*.log
-log/
+# ── Build output ──────────────────────────────────────────────────────────────
 output/
 build/
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+log/
+
+# ── Kernel build artifacts ────────────────────────────────────────────────────
+# Object files
+*.o
+*.ko
+*.mod
+*.mod.c
+*.mod.o
+*.symvers
+
+# vmlinux / kernel images
+vmlinux
+vmlinux.o
+vmlinux.symvers
+System.map
+Module.symvers
+Module.markers
+modules.builtin
+modules.builtin.modinfo
+modules.order
+
+# Kernel config
+.config
+.config.old
+.config.bak
+
+# Intermediate build dirs (Linux kernel convention)
+include/generated/
+include/config/
+arch/*/include/generated/
+
+# Auto-generated kernel headers
+scripts/basic/.fixdep
+scripts/kconfig/.conf
+scripts/kconfig/lxdialog/*.o
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+.env
+.env.local
+
+# ── Archives ──────────────────────────────────────────────────────────────────
+*.tar
+*.tar.gz
+*.tar.xz
+*.tar.bz2
+*.zip
+*.img
+*.iso
+
+# ── Editor / OS ───────────────────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+Thumbs.db

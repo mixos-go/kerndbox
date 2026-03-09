@@ -1,0 +1,60 @@
+{
+  "name": "kerndbox",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": ".."
+  },
+
+  // UML requires ptrace — must run privileged.
+  // seccomp=unconfined lets ptrace work without a custom profile.
+  // Note: kernel.yama.ptrace_scope must be 0 on the HOST machine, not just
+  //       inside the container. Run once on host:
+  //   sudo sysctl -w kernel.yama.ptrace_scope=0
+  "runArgs": [
+    "--privileged",
+    "--security-opt", "seccomp=unconfined",
+    "--hostname", "kerndbox-dev"
+  ],
+
+  // Cache kernel source tarballs across rebuilds
+  "mounts": [
+    "source=kerndbox-cache,target=/cache,type=volume"
+  ],
+
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "workspaceFolder": "/workspace",
+
+  "containerEnv": {
+    // Set this to your GitHub repo (owner/repo) for fetch-rootfs.sh
+    // Override in your shell or devcontainer.env file
+    "GITHUB_REPO": "${localEnv:GITHUB_REPO:mixos-go/kerndbox}",
+    // Optional: GitHub token for private repos or to avoid rate limits
+    "GH_TOKEN": "${localEnv:GH_TOKEN}"
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools",
+        "ms-vscode.cpptools-extension-pack",
+        "streetsidesoftware.code-spell-checker",
+        "mhutchie.git-graph",
+        "eamodio.gitlens"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "terminal.integrated.scrollback": 10000,
+        "files.watcherExclude": {
+          "**/output/**": true,
+          "/tmp/linux-*/**": true,
+          "/cache/**": true
+        }
+      }
+    }
+  },
+
+  // Make scripts executable on container start
+  "postCreateCommand": "chmod +x scripts/*.sh scripts/entrypoint.sh 2>/dev/null || true && echo 'kerndbox devcontainer ready — run: kerndbox-entrypoint help'",
+
+  "remoteUser": "root"
+}

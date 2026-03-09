@@ -1,44 +1,61 @@
 name: Build Kernel
 
 on:
-  push:
-    branches: [main, master]
-    paths:
-      - 'kernel/**'
-      - 'scripts/build-arm64.sh'
-      - 'scripts/build-x86.sh'
-      - '.github/workflows/kernel.yml'
   workflow_dispatch:
     inputs:
+      version:
+        description: "Version tag, e.g. v1.0.0"
+        required: true
+        default: "v0.1.0"
+      label:
+        description: "Release label"
+        required: true
+        default: "latest"
+        type: choice
+        options:
+          - latest
+          - experimental
       arch:
-        description: "Architecture (aarch64 | x86_64 | all)"
-        required: false
+        description: "Architecture to build"
+        required: true
         default: "all"
+        type: choice
+        options:
+          - all
+          - arm64
+          - x86_64
 
 permissions: {}
 
 concurrency:
-  group: kernel-${{ github.ref }}
-  cancel-in-progress: true
-
-# UML cannot be cross-compiled -- ARCH=um always targets the host CPU ABI.
-#   aarch64 -> ubuntu-24.04-arm  (GitHub-hosted ARM64)
-#   x86_64  -> ubuntu-24.04      (GitHub-hosted x86_64)
+  group: kernel-${{ github.event.inputs.version }}
+  cancel-in-progress: false
 
 jobs:
 
+  setup:
+    name: Setup matrix
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Compute build matrix
+        id: matrix
+        run: |
+          case "${{ github.event.inputs.arch }}" in
+            all)   echo 'matrix={"include":[{"arch":"aarch64","arch_out":"arm64","runner":"ubuntu-24.04-arm"},{"arch":"x86_64","arch_out":"x86_64","runner":"ubuntu-24.04"}]}' >> $GITHUB_OUTPUT ;;
+            arm64) echo 'matrix={"include":[{"arch":"aarch64","arch_out":"arm64","runner":"ubuntu-24.04-arm"}]}' >> $GITHUB_OUTPUT ;;
+            *)     echo 'matrix={"include":[{"arch":"x86_64","arch_out":"x86_64","runner":"ubuntu-24.04"}]}' >> $GITHUB_OUTPUT ;;
+          esac
+
   build-kernel:
-    name: Kernel (${{ matrix.arch }})
+    name: Kernel (${{ matrix.arch_out }})
+    needs: setup
     permissions:
       contents: read
     runs-on: ${{ matrix.runner }}
     strategy:
-      matrix:
-        include:
-          - arch: aarch64
-            runner: ubuntu-24.04-arm
-          - arch: x86_64
-            runner: ubuntu-24.04
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
       fail-fast: false
 
     steps:
@@ -50,107 +67,28 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential flex bison libssl-dev libelf-dev bc
 
-      - name: Build UML kernel (${{ matrix.arch }})
+      - name: Build UML kernel (${{ matrix.arch_out }})
         run: |
           if [ "${{ matrix.arch }}" = "aarch64" ]; then
-            chmod +x scripts/build-arm64.sh
-            sudo ./scripts/build-arm64.sh
+            chmod +x scripts/build-arm64.sh && sudo ./scripts/build-arm64.sh
           else
-            chmod +x scripts/build-x86.sh
-            sudo ./scripts/build-x86.sh
+            chmod +x scripts/build-x86.sh && sudo ./scripts/build-x86.sh
           fi
 
-      - name: Upload kernel artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-${{ matrix.arch }}
-          path: output/linux-uml-${{ matrix.arch }}
-          retention-days: 7
-
-  boot-test:
-    name: Boot test (${{ matrix.arch }})
-    needs: build-kernel
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      matrix:
-        include:
-          - arch: aarch64
-            runner: ubuntu-24.04-arm
-          - arch: x86_64
-            runner: ubuntu-24.04
-      fail-fast: false
-
-    steps:
-      - name: Download kernel artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: kernel-${{ matrix.arch }}
-          path: ./output
-
-      - name: Download rootfs from bootstrap-latest release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release download bootstrap-latest \
-            --repo ${{ github.repository }} \
-            --pattern "debian-rootfs-${{ matrix.arch }}.img" \
-            --dir ./output
-
-      # UML uses ptrace internally to intercept guest syscalls.
-      # ptrace_scope=1 (default) blocks ptrace of non-children on some runners.
-      # scope=0 restores classic behavior required by UML.
-      - name: Allow ptrace for UML
-        run: sudo sysctl -w kernel.yama.ptrace_scope=0
-
-      - name: Boot UML kernel (Debian rootfs)
-        run: |
-          chmod +x output/linux-uml-${{ matrix.arch }}
-
-          echo "=== Kernel binary ==="
-          ls -lh output/linux-uml-${{ matrix.arch }}
-          echo "=== Rootfs image ==="
-          ls -lh output/debian-rootfs-${{ matrix.arch }}.img
-
-          set +e
-          echo 'echo DEVBOX_BOOT_OK && poweroff -f' | \
-          timeout 90 output/linux-uml-${{ matrix.arch }} \
-            ubd0=$(pwd)/output/debian-rootfs-${{ matrix.arch }}.img \
-            root=/dev/ubda \
-            rootfstype=ext4 \
-            mem=512M \
-            init=/bin/sh \
-            con=fd:0,fd:1 \
-            2>&1 | tee boot.log
-          EXIT_CODE=${PIPESTATUS[0]}
-          set -e
-          echo "=== UML exit code: ${EXIT_CODE} ==="
-
-      - name: Check boot succeeded
-        run: |
-          if grep -q "DEVBOX_BOOT_OK" boot.log; then
-            echo "Boot test PASSED"
-          else
-            echo "Boot test FAILED -- DEVBOX_BOOT_OK not found"
-            grep -q "Kernel panic"          boot.log && grep "Kernel panic" boot.log | head -5 || true
-            grep -q "VFS: Cannot open root" boot.log && echo "   -> Root filesystem mount failed" || true
-            grep -q "No init found"         boot.log && echo "   -> init=/bin/sh not found in rootfs" || true
-            grep -q "check_ptrace"          boot.log && echo "   -> ptrace check failed (runner restriction)" || true
-            exit 1
-          fi
-
-      - name: Upload boot log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: boot-log-kernel-${{ matrix.arch }}
-          path: boot.log
+          name: kernel-${{ matrix.arch_out }}
+          path: |
+            output/kernel-${{ matrix.arch_out }}
+            output/modules-${{ matrix.arch_out }}.tar.gz
           retention-days: 7
 
   publish-kernel:
     name: Publish kernel
+    needs: [setup, build-kernel]
     permissions:
       contents: write
-    needs: [build-kernel, boot-test]
     runs-on: ubuntu-24.04
 
     steps:
@@ -158,48 +96,120 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download kernel artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: kernel-*
           merge-multiple: true
           path: ./output
 
-      - name: List output
-        run: ls -lh output/
-
-      - name: Read kernel version
+      - name: Read kernel source version
         id: kver
         run: |
-          VER=$(grep 'UML_KERNEL_VERSION=' scripts/build-arm64.sh \
-            | grep -v ':-' | head -1 | cut -d= -f2 | tr -d '"')
+          VER=$(grep 'UML_KERNEL_VERSION:-' scripts/build-arm64.sh \
+            | head -1 | sed 's/.*:-\(.*\)}/\1/')
           echo "version=${VER}" >> $GITHUB_OUTPUT
 
-      - name: Publish to kernel-latest
+      - name: Build release notes
+        id: notes
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          LABEL="${{ github.event.inputs.label }}"
+          ARCH="${{ github.event.inputs.arch }}"
+          KVER="${{ steps.kver.outputs.version }}"
+          BUILT_AT="$(date '+%Y-%m-%d %H:%M UTC')"
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+          REPO="${{ github.repository }}"
+          TAG="kernel-${VERSION}"
+
+          LABEL_BADGE=""
+          [ "$LABEL" = "latest"       ] && LABEL_BADGE="![latest](https://img.shields.io/badge/label-latest-brightgreen)"
+          [ "$LABEL" = "experimental" ] && LABEL_BADGE="![experimental](https://img.shields.io/badge/label-experimental-orange)"
+
+          FILES_TABLE=""
+          [ -f output/kernel-arm64          ] && FILES_TABLE="${FILES_TABLE}\n| \`kernel-arm64\`          | UML kernel binary | ARM64  | $(du -sh output/kernel-arm64 | cut -f1) |"
+          [ -f output/kernel-x86_64         ] && FILES_TABLE="${FILES_TABLE}\n| \`kernel-x86_64\`         | UML kernel binary | x86_64 | $(du -sh output/kernel-x86_64 | cut -f1) |"
+          [ -f output/modules-arm64.tar.gz  ] && FILES_TABLE="${FILES_TABLE}\n| \`modules-arm64.tar.gz\`  | Kernel modules    | ARM64  | $(du -sh output/modules-arm64.tar.gz | cut -f1) |"
+          [ -f output/modules-x86_64.tar.gz ] && FILES_TABLE="${FILES_TABLE}\n| \`modules-x86_64.tar.gz\` | Kernel modules    | x86_64 | $(du -sh output/modules-x86_64.tar.gz | cut -f1) |"
+
+          cat > /tmp/release-notes.md << NOTES
+          # kerndbox Kernel ${VERSION}
+
+          ${LABEL_BADGE}
+
+          User Mode Linux kernel for **DevBox** — runs Linux in userspace via \`ptrace\`, no KVM, no root required.
+
+          ---
+
+          ## 📦 Build Info
+
+          | Field       | Value |
+          |---|---|
+          | **Version** | \`${VERSION}\` |
+          | **Label**   | \`${LABEL}\` |
+          | **Linux**   | \`${KVER}\` |
+          | **Arch**    | \`${ARCH}\` |
+          | **Commit**  | [\`${SHORT_SHA}\`](https://github.com/${REPO}/commit/${{ github.sha }}) |
+          | **Built**   | \`${BUILT_AT}\` |
+
+          ---
+
+          ## 📁 Files
+
+          | File | Description | Arch | Size |
+          |---|---|---|---|
+          $(echo -e "$FILES_TABLE" | sed '/^$/d')
+
+          ---
+
+          ## 🚀 Usage
+
+          ### Download
+          \`\`\`bash
+          # Kernel binary only
+          gh release download ${TAG} --repo ${REPO} --pattern "kernel-arm64"
+
+          # Kernel + modules
+          gh release download ${TAG} --repo ${REPO} \
+            --pattern "kernel-arm64" \
+            --pattern "modules-arm64.tar.gz"
+          \`\`\`
+
+          ### Boot
+          \`\`\`bash
+          chmod +x kernel-arm64
+          ./kernel-arm64 ubd0=rootfs.img root=/dev/ubda mem=512M con=fd:0,fd:1
+          \`\`\`
+          NOTES
+
+          echo "notes_file=/tmp/release-notes.md" >> $GITHUB_OUTPUT
+          echo "tag=kernel-${VERSION}"            >> $GITHUB_OUTPUT
+
+      - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          BUILT_AT="$(date '+%Y-%m-%d %H:%M UTC')"
-          KVER="${{ steps.kver.outputs.version }}"
+          TAG="${{ steps.notes.outputs.tag }}"
+          LABEL="${{ github.event.inputs.label }}"
 
-          git push origin :refs/tags/kernel-latest 2>/dev/null || true
-          gh release create kernel-latest \
-            --title "UML Kernel ${KVER} (latest) -- ${BUILT_AT}" \
-            --notes "User Mode Linux kernel for DevBox.
+          # --latest     → GitHub marks this as the latest stable release
+          # --prerelease → shown as pre-release, does NOT become latest
+          RELEASE_FLAG="--prerelease"
+          [ "$LABEL" = "latest" ] && RELEASE_FLAG="--latest"
 
-          **Kernel:** Linux ${KVER}
-          **Built:** ${BUILT_AT}
-          **Commit:** ${{ github.sha }}
+          gh release create "$TAG" \
+            --title "Kernel ${{ github.event.inputs.version }}" \
+            --notes-file "${{ steps.notes.outputs.notes_file }}" \
+            $RELEASE_FLAG \
+            2>/dev/null || \
+          gh release edit "$TAG" \
+            --title "Kernel ${{ github.event.inputs.version }}" \
+            --notes-file "${{ steps.notes.outputs.notes_file }}" \
+            $RELEASE_FLAG
 
-          Files:
-          - \`linux-uml-aarch64\` -- UML kernel binary for ARM64 Android
-          - \`linux-uml-x86_64\`  -- UML kernel binary for x86_64
-
-          No KVM needed. No root needed. Runs entirely in userspace via ptrace.
-
-          > Rolling tag -- always points to latest build." \
-            --prerelease
-
-          for f in output/linux-uml-*; do
-            gh release upload kernel-latest "$f" --clobber
+          for f in output/kernel-* output/modules-*.tar.gz; do
+            [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber
           done
+
+          echo "✓ Published: https://github.com/${{ github.repository }}/releases/tag/${TAG}"

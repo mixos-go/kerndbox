@@ -1,38 +1,65 @@
 name: Build Rootfs
 
 on:
-  push:
-    branches: [main, master]
-    paths:
-      - 'scripts/build-debian-image.sh'
-      - '.github/workflows/rootfs.yml'
   workflow_dispatch:
     inputs:
+      version:
+        description: "Version tag, e.g. v1.0.0"
+        required: true
+        default: "v0.1.0"
+      label:
+        description: "Release label"
+        required: true
+        default: "latest"
+        type: choice
+        options:
+          - latest
+          - experimental
       arch:
-        description: "Architecture (aarch64 | x86_64 | all)"
-        required: false
+        description: "Architecture to build"
+        required: true
         default: "all"
+        type: choice
+        options:
+          - all
+          - arm64
+          - x86_64
+      kernel_tag:
+        description: "Kernel release tag to pull modules from (e.g. kernel-v1.0.0)"
+        required: true
+        default: "kernel-v0.1.0"
 
 permissions: {}
 
 concurrency:
-  group: rootfs-${{ github.ref }}
-  cancel-in-progress: true
+  group: rootfs-${{ github.event.inputs.version }}
+  cancel-in-progress: false
 
 jobs:
 
+  setup:
+    name: Setup matrix
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Compute build matrix
+        id: matrix
+        run: |
+          case "${{ github.event.inputs.arch }}" in
+            all)   echo 'matrix={"include":[{"arch":"aarch64","arch_out":"arm64","runner":"ubuntu-24.04-arm"},{"arch":"x86_64","arch_out":"x86_64","runner":"ubuntu-24.04"}]}' >> $GITHUB_OUTPUT ;;
+            arm64) echo 'matrix={"include":[{"arch":"aarch64","arch_out":"arm64","runner":"ubuntu-24.04-arm"}]}' >> $GITHUB_OUTPUT ;;
+            *)     echo 'matrix={"include":[{"arch":"x86_64","arch_out":"x86_64","runner":"ubuntu-24.04"}]}' >> $GITHUB_OUTPUT ;;
+          esac
+
   build-rootfs:
-    name: Rootfs (${{ matrix.arch }})
+    name: Rootfs (${{ matrix.arch_out }})
+    needs: setup
     permissions:
       contents: read
     runs-on: ${{ matrix.runner }}
     strategy:
-      matrix:
-        include:
-          - arch: aarch64
-            runner: ubuntu-24.04-arm
-          - arch: x86_64
-            runner: ubuntu-24.04
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
       fail-fast: false
 
     steps:
@@ -42,31 +69,52 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            debootstrap \
-            qemu-user-static \
-            binfmt-support \
-            e2fsprogs
+            debootstrap qemu-user-static binfmt-support e2fsprogs
 
       - name: Enable binfmt for cross-arch chroot
         run: sudo systemctl restart systemd-binfmt 2>/dev/null || true
 
-      - name: Build Debian rootfs (${{ matrix.arch }})
+      - name: Download modules from ${{ github.event.inputs.kernel_tag }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p output
+          KERNEL_TAG="${{ github.event.inputs.kernel_tag }}"
+          ARCH_OUT="${{ matrix.arch_out }}"
+
+          echo "Fetching modules-${ARCH_OUT}.tar.gz from ${KERNEL_TAG}..."
+          if gh release download "${KERNEL_TAG}" \
+              --repo ${{ github.repository }} \
+              --pattern "modules-${ARCH_OUT}.tar.gz" \
+              --dir ./output; then
+            KO_COUNT=$(tar -tzf output/modules-${ARCH_OUT}.tar.gz | grep -c '\.ko$' || true)
+            echo "  → ${KO_COUNT} .ko modules"
+            echo "MODULES_TAR=$(pwd)/output/modules-${ARCH_OUT}.tar.gz" >> "$GITHUB_ENV"
+          else
+            echo "WARNING: modules-${ARCH_OUT}.tar.gz not found in ${KERNEL_TAG}"
+            echo "  Rootfs will have empty /lib/modules/ — run kernel workflow first"
+            echo "MODULES_TAR=" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build Debian rootfs (${{ matrix.arch_out }}) with modules
         run: |
           chmod +x scripts/build-debian-image.sh
-          sudo ./scripts/build-debian-image.sh ${{ matrix.arch }}
+          ARCH_UPPER=$(echo "${{ matrix.arch }}" | tr '[:lower:]' '[:upper:]' | tr - _)
+          sudo env "MODULES_TAR_${ARCH_UPPER}=${MODULES_TAR}" \
+            ./scripts/build-debian-image.sh ${{ matrix.arch }}
 
-      - name: Upload rootfs artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rootfs-${{ matrix.arch }}
+          name: rootfs-${{ matrix.arch_out }}
           path: output/debian-rootfs-${{ matrix.arch }}.img
           retention-days: 7
 
   publish-rootfs:
     name: Publish rootfs
+    needs: [setup, build-rootfs]
     permissions:
       contents: write
-    needs: build-rootfs
     runs-on: ubuntu-24.04
 
     steps:
@@ -74,37 +122,111 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download rootfs artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: rootfs-*
           merge-multiple: true
           path: ./output
 
-      - name: List output
-        run: ls -lh output/
+      - name: Build release notes
+        id: notes
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          LABEL="${{ github.event.inputs.label }}"
+          ARCH="${{ github.event.inputs.arch }}"
+          KERNEL_TAG="${{ github.event.inputs.kernel_tag }}"
+          BUILT_AT="$(date '+%Y-%m-%d %H:%M UTC')"
+          SHORT_SHA="${{ github.sha }}"
+          SHORT_SHA="${SHORT_SHA:0:7}"
+          REPO="${{ github.repository }}"
+          TAG="bootstrap-${VERSION}"
 
-      - name: Publish to bootstrap-latest
+          LABEL_BADGE=""
+          [ "$LABEL" = "latest"       ] && LABEL_BADGE="![latest](https://img.shields.io/badge/label-latest-brightgreen)"
+          [ "$LABEL" = "experimental" ] && LABEL_BADGE="![experimental](https://img.shields.io/badge/label-experimental-orange)"
+
+          FILES_TABLE=""
+          [ -f output/debian-rootfs-aarch64.img ] && FILES_TABLE="${FILES_TABLE}\n| \`debian-rootfs-aarch64.img\` | Debian bookworm rootfs (modules baked in) | ARM64  | $(du -sh output/debian-rootfs-aarch64.img | cut -f1) |"
+          [ -f output/debian-rootfs-x86_64.img  ] && FILES_TABLE="${FILES_TABLE}\n| \`debian-rootfs-x86_64.img\`  | Debian bookworm rootfs (modules baked in) | x86_64 | $(du -sh output/debian-rootfs-x86_64.img | cut -f1) |"
+
+          cat > /tmp/release-notes.md << NOTES
+          # kerndbox Bootstrap ${VERSION}
+
+          ${LABEL_BADGE}
+
+          Debian **bookworm** rootfs for DevBox — ready to boot with UML. Kernel modules are baked in, \`modprobe\` works out of the box.
+
+          ---
+
+          ## 📦 Build Info
+
+          | Field          | Value |
+          |---|---|
+          | **Version**    | \`${VERSION}\` |
+          | **Label**      | \`${LABEL}\` |
+          | **Arch**       | \`${ARCH}\` |
+          | **Kernel tag** | [\`${KERNEL_TAG}\`](https://github.com/${REPO}/releases/tag/${KERNEL_TAG}) |
+          | **Commit**     | [\`${SHORT_SHA}\`](https://github.com/${REPO}/commit/${{ github.sha }}) |
+          | **Built**      | \`${BUILT_AT}\` |
+
+          ---
+
+          ## 📁 Files
+
+          | File | Description | Arch | Size |
+          |---|---|---|---|
+          $(echo -e "$FILES_TABLE" | sed '/^$/d')
+
+          ---
+
+          ## 🚀 Usage
+
+          ### Download
+          \`\`\`bash
+          gh release download bootstrap-${VERSION} --repo ${REPO} --pattern "debian-rootfs-aarch64.img"
+          \`\`\`
+
+          ### Boot with UML
+          \`\`\`bash
+          ./kernel-arm64 \\
+            ubd0=debian-rootfs-aarch64.img \\
+            root=/dev/ubda mem=512M con=fd:0,fd:1
+          \`\`\`
+
+          ### What's included
+          - Debian bookworm (stable)
+          - \`zsh\` + starship prompt
+          - \`openssh-server\`, \`curl\`, \`wget\`, \`socat\`
+          - \`vim-tiny\`, \`iproute2\`, \`net-tools\`
+          - Kernel modules from [\`${KERNEL_TAG}\`](https://github.com/${REPO}/releases/tag/${KERNEL_TAG}) — \`modprobe\` ready
+          NOTES
+
+          echo "notes_file=/tmp/release-notes.md" >> $GITHUB_OUTPUT
+          echo "tag=bootstrap-${VERSION}"         >> $GITHUB_OUTPUT
+
+      - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          BUILT_AT="$(date '+%Y-%m-%d %H:%M UTC')"
+          TAG="${{ steps.notes.outputs.tag }}"
+          LABEL="${{ github.event.inputs.label }}"
 
-          git push origin :refs/tags/bootstrap-latest 2>/dev/null || true
-          gh release create bootstrap-latest \
-            --title "Bootstrap (latest) -- ${BUILT_AT}" \
-            --notes "Debian bookworm rootfs for DevBox.
+          RELEASE_FLAG="--prerelease"
+          [ "$LABEL" = "latest" ] && RELEASE_FLAG="--latest"
 
-          **Built:** ${BUILT_AT}
-          **Commit:** ${{ github.sha }}
-
-          Files:
-          - \`debian-rootfs-aarch64.img\` -- ARM64 rootfs
-          - \`debian-rootfs-x86_64.img\`  -- x86_64 rootfs
-
-          > Rolling tag -- always points to latest build." \
-            --prerelease
+          gh release create "$TAG" \
+            --title "Bootstrap ${{ github.event.inputs.version }}" \
+            --notes-file "${{ steps.notes.outputs.notes_file }}" \
+            $RELEASE_FLAG \
+            2>/dev/null || \
+          gh release edit "$TAG" \
+            --title "Bootstrap ${{ github.event.inputs.version }}" \
+            --notes-file "${{ steps.notes.outputs.notes_file }}" \
+            $RELEASE_FLAG
 
           for f in output/debian-rootfs-*.img; do
-            gh release upload bootstrap-latest "$f" --clobber
+            [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber
           done
+
+          echo "✓ Published: https://github.com/${{ github.repository }}/releases/tag/${TAG}"

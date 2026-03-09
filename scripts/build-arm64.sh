@@ -4,7 +4,7 @@
 # MUST run on a native aarch64 host (ubuntu-24.04-arm runner).
 # UML cannot be cross-compiled.
 #
-# Output: ./output/linux-uml-aarch64
+# Output: ./output/kernel-arm64
 #
 # Usage:
 #   ./scripts/build-arm64.sh
@@ -13,9 +13,15 @@
 set -euo pipefail
 
 OUTPUT_DIR="$(pwd)/output"
+BUILD_LOG="$OUTPUT_DIR/build-arm64.log"
 UML_KERNEL_VERSION="${UML_KERNEL_VERSION:-6.12.74}"
 
 mkdir -p "$OUTPUT_DIR"
+
+# Tee all output (stdout + stderr) to build log on host output/
+exec > >(tee -a "$BUILD_LOG") 2>&1
+echo "[build] Log: $BUILD_LOG"
+echo "[build] Started: $(date '+%Y-%m-%d %H:%M:%S')"
 
 log() { echo "[DevBox] $*"; }
 die() { echo "[DevBox][ERROR] $*" >&2; exit 1; }
@@ -59,7 +65,7 @@ done
 log "Patches applied ($(ls "$PATCH_DIR"/0*.patch | wc -l) patches)."
 
 # ── Configure ────────────────────────────────────────────────────────────────
-BUILD_DIR="/tmp/linux-uml-aarch64"
+BUILD_DIR="/tmp/kernel-arm64"
 rm -rf "$BUILD_DIR"; mkdir -p "$BUILD_DIR"
 
 J="-j$(nproc)"
@@ -75,10 +81,10 @@ make -C "$SRC_DIR" O="$BUILD_DIR" ARCH=um $J
 UML_BIN=$(find "$BUILD_DIR" -maxdepth 1 \( -name "linux" -o -name "vmlinux" \) 2>/dev/null | head -1)
 [[ -z "$UML_BIN" ]] && die "UML binary not found after build"
 
-DEST="$OUTPUT_DIR/linux-uml-aarch64"
+DEST="$OUTPUT_DIR/kernel-arm64"
 cp "$UML_BIN" "$DEST"
 chmod +x "$DEST"
-log "Done: linux-uml-aarch64 ($(du -sh "$DEST" | cut -f1))"
+log "Done: kernel-arm64 ($(du -sh "$DEST" | cut -f1))"
 
 # ── Package kernel modules ────────────────────────────────────────────────────
 # Install modules into a staging dir, then tar them up.
@@ -95,7 +101,7 @@ make -C "$SRC_DIR" O="$BUILD_DIR" ARCH=um \
 # Remove build/source symlinks (they point to CI paths, useless in rootfs)
 find "$MODULES_STAGING" -name "build" -o -name "source" | xargs rm -f 2>/dev/null || true
 
-MODULES_TAR="$OUTPUT_DIR/modules-aarch64.tar.gz"
+MODULES_TAR="$OUTPUT_DIR/modules-arm64.tar.gz"
 tar -czf "$MODULES_TAR" -C "$MODULES_STAGING" lib/
-log "Done: modules-aarch64.tar.gz ($(du -sh "$MODULES_TAR" | cut -f1))"
+log "Done: modules-arm64.tar.gz ($(du -sh "$MODULES_TAR" | cut -f1))"
 log "      $(find "$MODULES_STAGING" -name "*.ko" | wc -l) modules packaged"

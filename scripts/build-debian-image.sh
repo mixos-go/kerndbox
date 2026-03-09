@@ -137,6 +137,34 @@ ZSHRC
     # Remove qemu binary from rootfs
     [ "$arch" != "$HOST_ARCH" ] && rm -f "$work_dir/usr/bin/qemu-${arch}-static" || true
 
+    # Step 2b: install kernel modules directly into the rootfs tree.
+    # Modules must match the running kernel version — always build kernel first,
+    # then rootfs. Pass the tarball path via env:
+    #   MODULES_TAR_AARCH64=./output/modules-arm64.tar.gz
+    #   MODULES_TAR_X86_64=./output/modules-x86_64.tar.gz
+    local arch_upper
+    arch_upper="$(echo "$arch" | tr '[:lower:]' '[:upper:]' | tr - _)"
+    local modules_tar="${!MODULES_TAR_${arch_upper}:-${MODULES_TAR:-}}"
+
+    if [ -n "$modules_tar" ] && [ -f "$modules_tar" ]; then
+        local ko_count
+        ko_count="$(tar -tzf "$modules_tar" | grep -c '\.ko$' || true)"
+        log "Installing $ko_count kernel modules into rootfs..."
+        tar -xzf "$modules_tar" -C "$work_dir"
+        local kver
+        kver="$(ls "$work_dir/lib/modules/" 2>/dev/null | head -1)"
+        if [ -n "$kver" ]; then
+            log "Running depmod for $kver..."
+            chroot "$work_dir" /sbin/depmod -a "$kver" 2>/dev/null || \
+                depmod -b "$work_dir" "$kver" 2>/dev/null || \
+                log "WARNING: depmod failed (non-fatal)"
+        fi
+        log "Modules installed: /lib/modules/$kver/ ✓"
+    else
+        log "No modules tarball set — /lib/modules/ will be empty."
+        log "  Set: MODULES_TAR_${arch_upper}=<path-to-modules-${arch}.tar.gz>"
+    fi
+
     # Step 3: pack into ext4 image via mke2fs -d (no loop mount needed)
     log "Calculating image size..."
     local used_kb

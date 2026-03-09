@@ -1,0 +1,158 @@
+# kerndbox — docker-compose.yml
+#
+# UML CANNOT be cross-compiled. Use the correct profile for your host:
+#
+#   On arm64 host:
+#     docker compose --profile arm64 run --rm build
+#     docker compose --profile arm64 run --rm test
+#     docker compose --profile arm64 run --rm dev
+#
+#   On x86_64 host:
+#     docker compose --profile x86 run --rm build
+#     docker compose --profile x86 run --rm test
+#     docker compose --profile x86 run --rm dev
+#
+# Prerequisites on HOST (for boot test):
+#   sudo sysctl -w kernel.yama.ptrace_scope=0
+
+services:
+
+  # ── arm64 build ──────────────────────────────────────────────────────────
+  build-arm64:
+    profiles: [arm64]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/arm64
+    image: kerndbox:arm64
+    platform: linux/arm64
+    privileged: true
+    security_opt:
+      - seccomp:unconfined
+    volumes:
+      - .:/workspace
+      - kerndbox-cache:/cache
+    working_dir: /workspace
+    environment:
+      - GITHUB_REPO=${GITHUB_REPO:-mixos-go/kerndbox}
+      - GH_TOKEN=${GH_TOKEN:-}
+    command: build
+
+  # ── arm64 test ───────────────────────────────────────────────────────────
+  test-arm64:
+    profiles: [arm64]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/arm64
+    image: kerndbox:arm64
+    platform: linux/arm64
+    privileged: true
+    security_opt:
+      - seccomp:unconfined
+    volumes:
+      - .:/workspace
+      - kerndbox-cache:/cache
+    working_dir: /workspace
+    environment:
+      - GITHUB_REPO=${GITHUB_REPO:-mixos-go/kerndbox}
+      - GH_TOKEN=${GH_TOKEN:-}
+    command: test
+
+  # ── arm64 dev shell ──────────────────────────────────────────────────────
+  dev-arm64:
+    profiles: [arm64]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/arm64
+    image: kerndbox:arm64
+    platform: linux/arm64
+    privileged: true
+    security_opt:
+      - seccomp:unconfined
+    volumes:
+      - .:/workspace
+      - kerndbox-cache:/cache
+    working_dir: /workspace
+    environment:
+      - GITHUB_REPO=${GITHUB_REPO:-mixos-go/kerndbox}
+      - GH_TOKEN=${GH_TOKEN:-}
+    stdin_open: true
+    tty: true
+    command: bash
+
+  # ── x86_64 build ─────────────────────────────────────────────────────────
+  build-x86:
+    profiles: [x86]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+    image: kerndbox:x86
+    platform: linux/amd64
+    privileged: true
+    security_opt:
+      - seccomp:unconfined
+    volumes:
+      - .:/workspace
+      - kerndbox-cache:/cache
+    working_dir: /workspace
+    environment:
+      - GITHUB_REPO=${GITHUB_REPO:-mixos-go/kerndbox}
+      - GH_TOKEN=${GH_TOKEN:-}
+    command: build
+
+  # ── x86_64 test ──────────────────────────────────────────────────────────
+  test-x86:
+    profiles: [x86]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+    image: kerndbox:x86
+    platform: linux/amd64
+    privileged: true
+    security_opt:
+      - seccomp:unconfined
+    volumes:
+      - .:/workspace
+      - kerndbox-cache:/cache
+    working_dir: /workspace
+    environment:
+      - GITHUB_REPO=${GITHUB_REPO:-mixos-go/kerndbox}
+      - GH_TOKEN=${GH_TOKEN:-}
+    command: test
+
+  # ── x86_64 dev shell ─────────────────────────────────────────────────────
+  dev-x86:
+    profiles: [x86]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+    image: kerndbox:x86
+    platform: linux/amd64
+    privileged: true
+    security_opt:
+      - seccomp:unconfined
+    volumes:
+      - .:/workspace
+      - kerndbox-cache:/cache
+    working_dir: /workspace
+    environment:
+      - GITHUB_REPO=${GITHUB_REPO:-mixos-go/kerndbox}
+      - GH_TOKEN=${GH_TOKEN:-}
+    stdin_open: true
+    tty: true
+    command: bash
+
+volumes:
+  kerndbox-cache:
+    name: kerndbox-cache
