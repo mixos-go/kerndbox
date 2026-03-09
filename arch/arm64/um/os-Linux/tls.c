@@ -17,6 +17,7 @@
 #include <sys/uio.h>
 #include <elf.h>          /* NT_ARM_TLS = 0x401 */
 #include "os.h"
+#include "arm64_um_os.h"
 
 #ifndef NT_ARM_TLS
 #define NT_ARM_TLS 0x401
