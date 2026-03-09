@@ -21,13 +21,12 @@ concurrency:
   group: kernel-${{ github.ref }}
   cancel-in-progress: true
 
-# UML cannot be cross-compiled — ARCH=um always targets the host CPU's ABI.
-#   aarch64 → ubuntu-24.04-arm  (GitHub-hosted ARM64)
-#   x86_64  → ubuntu-24.04      (GitHub-hosted x86_64)
+# UML cannot be cross-compiled -- ARCH=um always targets the host CPU ABI.
+#   aarch64 -> ubuntu-24.04-arm  (GitHub-hosted ARM64)
+#   x86_64  -> ubuntu-24.04      (GitHub-hosted x86_64)
 
 jobs:
 
-  # ── Build kernel ─────────────────────────────────────────────────────────────
   build-kernel:
     name: Kernel (${{ matrix.arch }})
     permissions:
@@ -68,9 +67,6 @@ jobs:
           path: output/linux-uml-${{ matrix.arch }}
           retention-days: 7
 
-  # ── Boot test — uses latest published rootfs ─────────────────────────────────
-  # Rootfs diambil dari release bootstrap-latest sehingga kernel CI tidak perlu
-  # build ulang rootfs setiap kali kernel berubah.
   boot-test:
     name: Boot test (${{ matrix.arch }})
     needs: build-kernel
@@ -100,20 +96,30 @@ jobs:
             --pattern "debian-rootfs-${{ matrix.arch }}.img" \
             --dir ./output
 
+      # UML uses ptrace internally to intercept guest syscalls.
+      # ptrace_scope=1 (default) blocks ptrace of non-children on some runners.
+      # scope=0 restores classic behavior required by UML.
+      - name: Allow ptrace for UML
+        run: sudo sysctl -w kernel.yama.ptrace_scope=0
+
       - name: Boot UML kernel (Debian rootfs)
         run: |
           chmod +x output/linux-uml-${{ matrix.arch }}
 
+          echo "=== Kernel binary ==="
+          ls -lh output/linux-uml-${{ matrix.arch }}
+          echo "=== Rootfs image ==="
+          ls -lh output/debian-rootfs-${{ matrix.arch }}.img
+
           set +e
           echo 'echo DEVBOX_BOOT_OK && poweroff -f' | \
           timeout 90 output/linux-uml-${{ matrix.arch }} \
-            ubd0=output/debian-rootfs-${{ matrix.arch }}.img \
+            ubd0=$(pwd)/output/debian-rootfs-${{ matrix.arch }}.img \
             root=/dev/ubda \
             rootfstype=ext4 \
             mem=512M \
             init=/bin/sh \
             con=fd:0,fd:1 \
-            ssl=null \
             2>&1 | tee boot.log
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
@@ -122,12 +128,13 @@ jobs:
       - name: Check boot succeeded
         run: |
           if grep -q "DEVBOX_BOOT_OK" boot.log; then
-            echo "✅ Boot test PASSED — Debian rootfs reached userspace"
+            echo "Boot test PASSED"
           else
-            echo "❌ Boot test FAILED — DEVBOX_BOOT_OK not found"
-            grep -q "Kernel panic"          boot.log && grep "Kernel panic" boot.log | head -3 || true
-            grep -q "VFS: Cannot open root" boot.log && echo "   → Root filesystem mount failed" || true
-            grep -q "No init found"         boot.log && echo "   → init=/bin/sh not found"       || true
+            echo "Boot test FAILED -- DEVBOX_BOOT_OK not found"
+            grep -q "Kernel panic"          boot.log && grep "Kernel panic" boot.log | head -5 || true
+            grep -q "VFS: Cannot open root" boot.log && echo "   -> Root filesystem mount failed" || true
+            grep -q "No init found"         boot.log && echo "   -> init=/bin/sh not found in rootfs" || true
+            grep -q "check_ptrace"          boot.log && echo "   -> ptrace check failed (runner restriction)" || true
             exit 1
           fi
 
@@ -139,7 +146,6 @@ jobs:
           path: boot.log
           retention-days: 7
 
-  # ── Publish kernel → kernel-latest ──────────────────────────────────────────
   publish-kernel:
     name: Publish kernel
     permissions:
@@ -178,7 +184,7 @@ jobs:
 
           git push origin :refs/tags/kernel-latest 2>/dev/null || true
           gh release create kernel-latest \
-            --title "UML Kernel ${KVER} (latest) — ${BUILT_AT}" \
+            --title "UML Kernel ${KVER} (latest) -- ${BUILT_AT}" \
             --notes "User Mode Linux kernel for DevBox.
 
           **Kernel:** Linux ${KVER}
@@ -186,13 +192,12 @@ jobs:
           **Commit:** ${{ github.sha }}
 
           Files:
-          - \`linux-uml-aarch64\` — UML kernel binary for ARM64 Android
-          - \`linux-uml-x86_64\`  — UML kernel binary for x86_64
+          - \`linux-uml-aarch64\` -- UML kernel binary for ARM64 Android
+          - \`linux-uml-x86_64\`  -- UML kernel binary for x86_64
 
-          Bundled inside DevBox APK (assets/). Extracted on first launch.
           No KVM needed. No root needed. Runs entirely in userspace via ptrace.
 
-          > Rolling tag — always points to latest build." \
+          > Rolling tag -- always points to latest build." \
             --prerelease
 
           for f in output/linux-uml-*; do
