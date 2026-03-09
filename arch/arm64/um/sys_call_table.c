@@ -12,8 +12,11 @@
  *
  * Because the prototype in Pass 1 matches sys_call_ptr_t exactly,
  * no cast is needed and -Wcast-function-type cannot fire.
- * No -Wmacro-redefined suppression needed because we undef/redefine
- * the macros in a clean sequence before each include.
+ *
+ * __SC_COMP and __SC_3264 are intentionally NOT pre-defined here.
+ * asm-generic/unistd.h already defines them in terms of __SYSCALL —
+ * pre-defining them would cause -Wmacro-redefined. We only define
+ * __SYSCALL and let the header expand the rest correctly.
  *
  * Syscall ABI (arm64 / EABI64):
  *   x8       = syscall number
@@ -30,9 +33,8 @@ extern asmlinkage long sys_ni_syscall(unsigned long, unsigned long,
 				      unsigned long, unsigned long);
 
 /* ── Pass 1: forward-declare every syscall symbol ─────────────────────────
- * This gives the compiler the correct prototype before we take the address
- * of each function.  Without this, the implicit (void *) → sys_call_ptr_t
- * cast would trigger -Wcast-function-type.
+ * Define only __SYSCALL — __SC_COMP and __SC_3264 are defined by
+ * asm-generic/unistd.h itself in terms of __SYSCALL, so no redefinition.
  */
 #undef  __SYSCALL
 #undef  __SC_COMP
@@ -40,8 +42,6 @@ extern asmlinkage long sys_ni_syscall(unsigned long, unsigned long,
 #define __SYSCALL(nr, sym) \
 	asmlinkage long sym(unsigned long, unsigned long, unsigned long, \
 			    unsigned long, unsigned long, unsigned long);
-#define __SC_COMP(nr, sym, csym)    __SYSCALL(nr, sym)
-#define __SC_3264(nr, sym32, sym64) __SYSCALL(nr, sym64)
 
 #include <asm-generic/unistd.h>
 
@@ -52,9 +52,7 @@ extern asmlinkage long sys_ni_syscall(unsigned long, unsigned long,
 #undef  __SYSCALL
 #undef  __SC_COMP
 #undef  __SC_3264
-#define __SYSCALL(nr, sym)          [nr] = sym,
-#define __SC_COMP(nr, sym, csym)    __SYSCALL(nr, sym)
-#define __SC_3264(nr, sym32, sym64) __SYSCALL(nr, sym64)
+#define __SYSCALL(nr, sym) [nr] = sym,
 
 const sys_call_ptr_t sys_call_table[] ____cacheline_aligned = {
 	[0 ... __NR_syscalls - 1] = sys_ni_syscall,
