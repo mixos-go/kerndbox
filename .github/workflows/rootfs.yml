@@ -21,7 +21,6 @@ concurrency:
 
 jobs:
 
-  # ── Build rootfs ─────────────────────────────────────────────────────────────
   build-rootfs:
     name: Rootfs (${{ matrix.arch }})
     permissions:
@@ -43,8 +42,13 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            debootstrap qemu-user-static binfmt-support \
+            debootstrap \
+            qemu-user-static \
+            binfmt-support \
             e2fsprogs
+
+      - name: Enable binfmt for cross-arch chroot
+        run: sudo systemctl restart systemd-binfmt 2>/dev/null || true
 
       - name: Build Debian rootfs (${{ matrix.arch }})
         run: |
@@ -58,9 +62,6 @@ jobs:
           path: output/debian-rootfs-${{ matrix.arch }}.img
           retention-days: 7
 
-  # ── Boot test — uses latest published kernel ─────────────────────────────────
-  # Kernel diambil dari release kernel-latest sehingga rootfs CI tidak bergantung
-  # pada kernel build yang sedang berjalan.
   boot-test:
     name: Boot test (${{ matrix.arch }})
     needs: build-rootfs
@@ -111,12 +112,12 @@ jobs:
       - name: Check boot succeeded
         run: |
           if grep -q "DEVBOX_BOOT_OK" boot.log; then
-            echo "✅ Boot test PASSED"
+            echo "Boot test PASSED"
           else
-            echo "❌ Boot test FAILED — DEVBOX_BOOT_OK not found"
+            echo "Boot test FAILED - DEVBOX_BOOT_OK not found"
             grep -q "Kernel panic"          boot.log && grep "Kernel panic" boot.log | head -3 || true
-            grep -q "VFS: Cannot open root" boot.log && echo "   → Root filesystem mount failed" || true
-            grep -q "No init found"         boot.log && echo "   → init=/bin/sh not found"       || true
+            grep -q "VFS: Cannot open root" boot.log && echo "   -> Root filesystem mount failed" || true
+            grep -q "No init found"         boot.log && echo "   -> init=/bin/sh not found"       || true
             exit 1
           fi
 
@@ -128,7 +129,6 @@ jobs:
           path: boot.log
           retention-days: 7
 
-  # ── Publish rootfs → bootstrap-latest ───────────────────────────────────────
   publish-rootfs:
     name: Publish rootfs
     permissions:
@@ -159,20 +159,17 @@ jobs:
 
           git push origin :refs/tags/bootstrap-latest 2>/dev/null || true
           gh release create bootstrap-latest \
-            --title "Bootstrap (latest) — ${BUILT_AT}" \
+            --title "Bootstrap (latest) -- ${BUILT_AT}" \
             --notes "Debian bookworm rootfs for DevBox.
 
           **Built:** ${BUILT_AT}
           **Commit:** ${{ github.sha }}
 
           Files:
-          - \`debian-rootfs-aarch64.img\` — ARM64 rootfs (~400MB sparse ext4)
-          - \`debian-rootfs-x86_64.img\`  — x86_64 rootfs (~400MB sparse ext4)
+          - \`debian-rootfs-aarch64.img\` -- ARM64 rootfs
+          - \`debian-rootfs-x86_64.img\`  -- x86_64 rootfs
 
-          Downloaded by DevBox app on first launch.
-          Use directly: \`ubd0=debian-rootfs-aarch64.img\` — no decompression needed.
-
-          > Rolling tag — always points to latest build." \
+          > Rolling tag -- always points to latest build." \
             --prerelease
 
           for f in output/debian-rootfs-*.img; do

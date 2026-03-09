@@ -1,66 +1,84 @@
-#!/usr/bin/env bash
-# build-debian-image.sh — Build Debian bookworm rootfs for DevBox
+#!/bin/bash
+# build-debian-image.sh - Build Debian bookworm rootfs for DevBox
 #
 # Output: ./output/debian-rootfs-{arch}.img (sparse ext4)
 #
 # Usage:
-#   ./scripts/build-debian-image.sh [aarch64|x86_64|all]
+#   sudo ./scripts/build-debian-image.sh [aarch64|x86_64|all]
 
 set -euo pipefail
+
+log() { echo "[DevBox] $*"; }
+die() { echo "[DevBox][ERROR] $*" >&2; exit 1; }
+trap 'die "Script failed at line $LINENO"' ERR
+
+log "=== build-debian-image.sh starting ==="
+log "Running as: $(id)"
+log "Working dir: $(pwd)"
+log "Args: ${*:-<none>}"
 
 ARCH="${1:-all}"
 OUTPUT_DIR="$(pwd)/output"
 DEBIAN_SUITE="bookworm"
+HOST_ARCH="$(uname -m)"
+[ "$HOST_ARCH" = "arm64" ] && HOST_ARCH="aarch64"
 
+log "ARCH=$ARCH  HOST_ARCH=$HOST_ARCH"
 mkdir -p "$OUTPUT_DIR"
-
-log() { echo "[DevBox] $*"; }
-die() { echo "[DevBox][ERROR] $*" >&2; exit 1; }
 
 check_deps() {
     local missing=()
     for cmd in debootstrap mke2fs; do
-        command -v "$cmd" &>/dev/null || missing+=("$cmd")
+        command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
     done
-    [[ ${#missing[@]} -gt 0 ]] && \
-        die "Missing: ${missing[*]}. Install: sudo apt install debootstrap e2fsprogs"
+    # qemu-aarch64-static needed only for cross-build (aarch64 on x86_64 host)
+    if [ "$HOST_ARCH" = "x86_64" ] && [ "$ARCH" != "x86_64" ]; then
+        [ -f "/usr/bin/qemu-aarch64-static" ] || missing+=("qemu-user-static")
+    fi
+    [ ${#missing[@]} -gt 0 ] && \
+        die "Missing tools: ${missing[*]} -- run: apt install debootstrap e2fsprogs qemu-user-static binfmt-support"
+    log "Deps OK: debootstrap=$(command -v debootstrap) mke2fs=$(command -v mke2fs)"
+    mke2fs -V 2>&1 | head -1 | sed 's/^/[DevBox] /'
 }
 
 build_rootfs() {
     local arch="$1"
-    local deb_arch host_arch
-
-    host_arch="$(uname -m)"
-    [[ "$host_arch" == "arm64" ]] && host_arch="aarch64"
+    local deb_arch
 
     case "$arch" in
-        aarch64) deb_arch="arm64"  ;;
-        x86_64)  deb_arch="amd64"  ;;
+        aarch64) deb_arch="arm64" ;;
+        x86_64)  deb_arch="amd64" ;;
         *) die "Unknown arch: $arch" ;;
     esac
 
     local raw_img="$OUTPUT_DIR/debian-rootfs-${arch}.img"
-    log "Building Debian ${DEBIAN_SUITE} rootfs for ${arch}..."
+    log "Building Debian $DEBIAN_SUITE rootfs for $arch (deb_arch=$deb_arch)"
+    log "Output: $raw_img"
 
-    # ── Step 1: debootstrap into a temp directory ──────────────────────────
+    # Step 1: debootstrap into temp dir
     local work_dir
-    work_dir="$(mktemp -d)"
-    log "debootstrap stage: $work_dir"
+    work_dir="$(mktemp -d /tmp/devbox-rootfs-XXXXXX)"
+    log "Work dir: $work_dir"
 
-    # Copy qemu static binary for cross-arch debootstrap only
-    if [[ "$arch" != "$host_arch" ]]; then
+    # Copy qemu only for cross-arch builds
+    if [ "$arch" != "$HOST_ARCH" ]; then
         local qemu_bin="/usr/bin/qemu-${arch}-static"
-        [[ -f "$qemu_bin" ]] || die "Cross-build needs $qemu_bin (install qemu-user-static)"
-        cp "$qemu_bin" "$work_dir/usr/bin/" 2>/dev/null || true
+        [ -f "$qemu_bin" ] || die "Cross-build needs $qemu_bin -- install qemu-user-static"
+        mkdir -p "$work_dir/usr/bin"
+        cp "$qemu_bin" "$work_dir/usr/bin/"
+        log "Copied $qemu_bin for cross-build"
     fi
 
-    log "Running debootstrap (${deb_arch})..."
+    log "Running debootstrap ($deb_arch)..."
     debootstrap \
         --arch="$deb_arch" \
         --include="openssh-server,curl,socat,sudo,bash,zsh,coreutils,util-linux,net-tools,iproute2,procps,less,vim-tiny,ca-certificates,wget" \
         "$DEBIAN_SUITE" "$work_dir" "https://deb.debian.org/debian"
+    log "debootstrap done"
 
+    # Step 2: configure rootfs
     log "Configuring rootfs..."
+
     echo "devbox" > "$work_dir/etc/hostname"
 
     cat > "$work_dir/etc/fstab" << 'FSTAB'
@@ -79,17 +97,19 @@ iface eth0 inet dhcp
 NET
 
     chroot "$work_dir" /bin/bash -c "echo 'root:devbox' | chpasswd"
-    sed -i 's/#*PermitRootLogin.*/PermitRootLogin yes/'              "$work_dir/etc/ssh/sshd_config"
-    sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' "$work_dir/etc/ssh/sshd_config"
+    sed -i 's/#*PermitRootLogin.*/PermitRootLogin yes/' \
+        "$work_dir/etc/ssh/sshd_config"
+    sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' \
+        "$work_dir/etc/ssh/sshd_config"
     chroot "$work_dir" /bin/bash -c "systemctl enable ssh" 2>/dev/null || true
 
-    log "Installing starship prompt..."
+    log "Installing starship (optional)..."
     chroot "$work_dir" /bin/bash -c "
-        curl -fsSL https://starship.rs/install.sh -o /tmp/starship-install.sh
-        chmod +x /tmp/starship-install.sh
-        /tmp/starship-install.sh --yes --bin-dir /usr/local/bin
-        rm -f /tmp/starship-install.sh
-    " 2>/dev/null || log "WARNING: starship install failed — run manually"
+        curl -fsSL https://starship.rs/install.sh -o /tmp/starship.sh
+        chmod +x /tmp/starship.sh
+        /tmp/starship.sh --yes --bin-dir /usr/local/bin
+        rm -f /tmp/starship.sh
+    " 2>/dev/null || log "WARNING: starship skipped (non-fatal)"
 
     chroot "$work_dir" /bin/bash -c "chsh -s /bin/zsh root" 2>/dev/null || true
 
@@ -114,31 +134,28 @@ ZSHRC
 
     mkdir -p "$work_dir/mnt/devbox"
 
-    # Remove qemu binary from rootfs before packing
-    if [[ "$arch" != "$host_arch" ]]; then
-        rm -f "$work_dir/usr/bin/qemu-${arch}-static"
-    fi
+    # Remove qemu binary from rootfs
+    [ "$arch" != "$HOST_ARCH" ] && rm -f "$work_dir/usr/bin/qemu-${arch}-static" || true
 
-    # ── Step 2: pack directory into ext4 image (no loop mount needed) ──────
-    log "Creating ext4 image..."
-    # Calculate size: used space + 30% headroom, minimum 1G
+    # Step 3: pack into ext4 image via mke2fs -d (no loop mount needed)
+    log "Calculating image size..."
     local used_kb
-    used_kb=$(du -sk "$work_dir" | cut -f1)
-    local img_kb=$(( used_kb * 13 / 10 ))   # +30%
-    (( img_kb < 1048576 )) && img_kb=1048576  # minimum 1G
+    used_kb="$(du -sk "$work_dir" | cut -f1)"
+    local img_kb=$(( used_kb * 13 / 10 ))
+    [ "$img_kb" -lt 1048576 ] && img_kb=1048576
+    log "Used: ${used_kb}KB  Image: ${img_kb}KB"
 
-    # mkfs.ext4 can write directly to a new image file
+    log "Creating ext4 image..."
     truncate -s "${img_kb}K" "$raw_img"
-    mke2fs -t ext4 -F -L "debian-devbox" \
-        -d "$work_dir" \
-        "$raw_img"
+    mke2fs -t ext4 -F -L "debian-devbox" -d "$work_dir" "$raw_img"
 
+    log "Cleaning up..."
     rm -rf "$work_dir"
-    log "Done: $raw_img ($(du -sh "$raw_img" | cut -f1) on disk)"
+
+    log "Done: $raw_img ($(du -sh "$raw_img" | cut -f1))"
 }
 
 check_deps
-log "=== Starting rootfs build for: ${ARCH} ==="
 
 case "$ARCH" in
     aarch64) build_rootfs aarch64 ;;
@@ -152,4 +169,5 @@ case "$ARCH" in
         ;;
 esac
 
-log "=== Output ===" && ls -lh "$OUTPUT_DIR"/
+log "=== Done ==="
+ls -lh "$OUTPUT_DIR"/
