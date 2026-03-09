@@ -200,7 +200,7 @@ jobs:
           - \`openssh-server\`, \`curl\`, \`wget\`, \`socat\`
           - \`vim-tiny\`, \`iproute2\`, \`net-tools\`
           - Kernel modules from [\`${KERNEL_TAG}\`](https://github.com/${REPO}/releases/tag/${KERNEL_TAG}) — \`modprobe\` ready
-NOTES
+          NOTES
 
           echo "notes_file=/tmp/release-notes.md" >> $GITHUB_OUTPUT
           echo "tag=bootstrap-${VERSION}"         >> $GITHUB_OUTPUT

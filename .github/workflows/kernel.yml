@@ -146,7 +146,7 @@ jobs:
 
           ---
 
-          ## 📦 Build Info
+          ## Build Info
 
           | Field       | Value |
           |---|---|
@@ -159,7 +159,7 @@ jobs:
 
           ---
 
-          ## 📁 Files
+          ## Files
 
           | File | Description | Arch | Size |
           |---|---|---|---|
@@ -167,7 +167,7 @@ jobs:
 
           ---
 
-          ## 🚀 Usage
+          ## Usage
 
           ### Download
           \`\`\`bash
@@ -185,7 +185,7 @@ jobs:
           chmod +x kernel-arm64
           ./kernel-arm64 ubd0=rootfs.img root=/dev/ubda mem=512M con=fd:0,fd:1
           \`\`\`
-NOTES
+          NOTES
 
           echo "notes_file=/tmp/release-notes.md" >> $GITHUB_OUTPUT
           echo "tag=kernel-${VERSION}"            >> $GITHUB_OUTPUT
