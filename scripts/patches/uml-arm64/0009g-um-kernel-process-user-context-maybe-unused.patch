@@ -4,7 +4,7 @@
  	/* Is in_interrupt() really needed? */
  }
  
--int user_context(unsigned long sp)
+-static int user_context(unsigned long sp)
 +static __maybe_unused int user_context(unsigned long sp)
  {
  	unsigned long stack;
