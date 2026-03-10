@@ -69,12 +69,12 @@ jobs:
 
       - name: Install dependencies
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
             debootstrap qemu-user-static binfmt-support e2fsprogs
 
       - name: Enable binfmt for cross-arch chroot
-        run: sudo systemctl restart systemd-binfmt 2>/dev/null || true
+        run: systemctl restart systemd-binfmt 2>/dev/null || true
 
       - name: Download modules from ${{ github.event.inputs.kernel_tag }}
         env:
@@ -102,7 +102,7 @@ jobs:
         run: |
           chmod +x scripts/build-debian-image.sh
           ARCH_UPPER=$(echo "${{ matrix.arch }}" | tr '[:lower:]' '[:upper:]' | tr - _)
-          sudo env "MODULES_TAR_${ARCH_UPPER}=${MODULES_TAR}" \
+          env "MODULES_TAR_${ARCH_UPPER}=${MODULES_TAR}" \
             ./scripts/build-debian-image.sh ${{ matrix.arch }}
 
       - name: Upload artifact

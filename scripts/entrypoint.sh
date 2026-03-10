@@ -59,7 +59,7 @@ do_rootfs() {
     fi
 
     chmod +x scripts/build-debian-image.sh
-    sudo env "${modules_var}=${!modules_var:-}" bash scripts/build-debian-image.sh "$HOST_ARCH"
+    env "${modules_var}=${!modules_var:-}" bash scripts/build-debian-image.sh "$HOST_ARCH"
 
     log "Rootfs output:"
     ls -lh output/debian-rootfs-*.img 2>/dev/null || true
