@@ -57,7 +57,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     container:
       image: debian:bookworm
-      options: --cap-add=SYS_PTRACE
+      options: >-
+        --cap-add=SYS_PTRACE
+        --security-opt seccomp=unconfined
     strategy:
       matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
       fail-fast: false
@@ -68,7 +70,7 @@ jobs:
       - name: Install gh
         run: |
             apt update
-            apt install -y gh ca-certificates procps
+            apt install -y gh ca-certificates procps gdb strace
             update-ca-certificates
 
       - name: Download kernel
