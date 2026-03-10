@@ -73,7 +73,7 @@ jobs:
             chmod +x scripts/build-arm64.sh && sudo ./scripts/build-arm64.sh
           else
             chmod +x scripts/build-x86.sh && sudo ./scripts/build-x86.sh
-
+          fi
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
