@@ -16,7 +16,7 @@
 #   scripts/fetch-rootfs.sh
 #   scripts/run-test.sh
 
-FROM debian:bookworm
+FROM ubuntu:24.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 
