@@ -153,42 +153,14 @@ jobs:
           RELEASE_FLAG="--prerelease"
           [ "$LABEL" = "latest" ] && RELEASE_FLAG="--latest"
 
-          NOTES=/tmp/release-notes.md
-          echo "# kerndbox Bootstrap ${VERSION}"     > "$NOTES"
-          echo ""                                    >> "$NOTES"
-          echo "${LABEL_BADGE}"                      >> "$NOTES"
-          echo ""                                    >> "$NOTES"
-          echo "Debian **bookworm** rootfs for DevBox — ready to boot with UML. Kernel modules are baked in, \`modprobe\` works out of the box." >> "$NOTES"
-          echo ""                                    >> "$NOTES"
-          echo "---"                                 >> "$NOTES"
-          echo ""                                    >> "$NOTES"
-          echo "## Build Info"                       >> "$NOTES"
-          echo ""                                    >> "$NOTES"
-          echo "| Field          | Value |"          >> "$NOTES"
-          echo "|---|---|"                           >> "$NOTES"
-          echo "| **Version**    | \`${VERSION}\` |"    >> "$NOTES"
-          echo "| **Label**      | \`${LABEL}\` |"      >> "$NOTES"
-          echo "| **Arch**       | \`${ARCH}\` |"       >> "$NOTES"
-          echo "| **Kernel tag** | [\`${KERNEL_TAG}\`](https://github.com/${REPO}/releases/tag/${KERNEL_TAG}) |" >> "$NOTES"
-          echo "| **Built**      | \`${BUILT_AT}\` |"   >> "$NOTES"
-          echo ""                                    >> "$NOTES"
-          echo "---"                                 >> "$NOTES"
-          echo ""                                    >> "$NOTES"
-          echo "## Files"                            >> "$NOTES"
-          echo ""                                    >> "$NOTES"
-          echo "| File | Description | Arch | Size |" >> "$NOTES"
-          echo "|---|---|---|---|"                   >> "$NOTES"
-          [ -f output/debian-rootfs-aarch64.img ] && echo "| \`debian-rootfs-aarch64.img\` | Debian bookworm rootfs | ARM64  | $(du -sh output/debian-rootfs-aarch64.img | cut -f1) |" >> "$NOTES"
-          [ -f output/debian-rootfs-x86_64.img  ] && echo "| \`debian-rootfs-x86_64.img\`  | Debian bookworm rootfs | x86_64 | $(du -sh output/debian-rootfs-x86_64.img | cut -f1) |"  >> "$NOTES"
-
           gh release create "$TAG" \
             --title "Bootstrap ${VERSION}" \
-            --notes-file "$NOTES" \
+            --notes "Automated release" \
             $RELEASE_FLAG \
             2>/dev/null || \
           gh release edit "$TAG" \
             --title "Bootstrap ${VERSION}" \
-            --notes-file "$NOTES" \
+            --notes "Automated release" \
             $RELEASE_FLAG
 
           for f in output/debian-rootfs-*.img; do

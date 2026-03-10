@@ -44,6 +44,27 @@ do_build() {
     ls -lh output/kernel-* output/modules-*.tar.gz 2>/dev/null || true
 }
 
+do_rootfs() {
+    log "Building Debian rootfs for $HOST_ARCH..."
+
+    # If modules tarball exists in output/, inject it automatically
+    local modules_var="MODULES_TAR_$(echo "$HOST_ARCH" | tr '[:lower:]' '[:upper:]' | tr - _)"
+    local modules_tar="$(pwd)/output/modules-${ARCH_OUT}.tar.gz"
+    if [ -f "$modules_tar" ]; then
+        log "Found modules: $modules_tar — baking into rootfs"
+        export "${modules_var}=${modules_tar}"
+    else
+        log "No modules tarball found — rootfs will have empty /lib/modules/"
+        log "  Run 'build' first, or set ${modules_var}=<path>"
+    fi
+
+    chmod +x scripts/build-debian-image.sh
+    sudo env "${modules_var}=${!modules_var:-}" bash scripts/build-debian-image.sh "$HOST_ARCH"
+
+    log "Rootfs output:"
+    ls -lh output/debian-rootfs-*.img 2>/dev/null || true
+}
+
 do_fetch() {
     log "Fetching rootfs for $HOST_ARCH..."
     chmod +x scripts/fetch-rootfs.sh
@@ -66,9 +87,10 @@ case "$CMD" in
 kerndbox dev container — commands:
 
   build    Build UML kernel + modules (auto-detects arm64 / x86_64)
+  rootfs   Build Debian rootfs image locally (bakes in modules if present)
   fetch    Download rootfs from GitHub Releases (latest stable)
   test     Boot test UML kernel with rootfs
-  all      build → fetch → test
+  all      build → rootfs → fetch → test
 
   bash     Interactive shell
   help     This message
@@ -89,9 +111,10 @@ Output files (after build):
 EOF
         ;;
     build)   do_build ;;
+    rootfs)  do_rootfs ;;
     fetch)   do_fetch ;;
     test)    do_test  ;;
-    all)     do_build; do_fetch; do_test ;;
+    all)     do_build; do_rootfs; do_fetch; do_test ;;
     bash|sh) exec /bin/bash "$@" ;;
     *)       exec /bin/bash -c "$CMD $*" ;;
 esac

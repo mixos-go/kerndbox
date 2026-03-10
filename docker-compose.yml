@@ -85,6 +85,51 @@ services:
     tty: true
     command: bash
 
+
+  # ── arm64 build rootfs ───────────────────────────────────────────────────
+  rootfs-arm64:
+    profiles: [arm64]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/arm64
+    image: kerndbox:arm64
+    platform: linux/arm64
+    privileged: true
+    security_opt:
+      - seccomp:unconfined
+    volumes:
+      - .:/workspace
+      - kerndbox-cache:/cache
+    working_dir: /workspace
+    environment:
+      - GITHUB_REPO=${GITHUB_REPO:-mixos-go/kerndbox}
+      - GH_TOKEN=${GH_TOKEN:-}
+    command: rootfs
+
+  # ── x86_64 build rootfs ──────────────────────────────────────────────────
+  rootfs-x86:
+    profiles: [x86]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+    image: kerndbox:x86
+    platform: linux/amd64
+    privileged: true
+    security_opt:
+      - seccomp:unconfined
+    volumes:
+      - .:/workspace
+      - kerndbox-cache:/cache
+    working_dir: /workspace
+    environment:
+      - GITHUB_REPO=${GITHUB_REPO:-mixos-go/kerndbox}
+      - GH_TOKEN=${GH_TOKEN:-}
+    command: rootfs
+
   # ── x86_64 build ─────────────────────────────────────────────────────────
   build-x86:
     profiles: [x86]

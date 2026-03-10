@@ -134,44 +134,14 @@ jobs:
           RELEASE_FLAG="--prerelease"
           [ "$LABEL" = "latest" ] && RELEASE_FLAG="--latest"
 
-          NOTES=/tmp/release-notes.md
-          echo "# kerndbox Kernel ${VERSION}"        > "$NOTES"
-          echo ""                                    >> "$NOTES"
-          echo "${LABEL_BADGE}"                      >> "$NOTES"
-          echo ""                                    >> "$NOTES"
-          echo "User Mode Linux kernel for **DevBox** — runs Linux in userspace via \`ptrace\`, no KVM, no root required." >> "$NOTES"
-          echo ""                                    >> "$NOTES"
-          echo "---"                                 >> "$NOTES"
-          echo ""                                    >> "$NOTES"
-          echo "## Build Info"                       >> "$NOTES"
-          echo ""                                    >> "$NOTES"
-          echo "| Field      | Value |"              >> "$NOTES"
-          echo "|---|---|"                           >> "$NOTES"
-          echo "| **Version** | \`${VERSION}\` |"   >> "$NOTES"
-          echo "| **Label**   | \`${LABEL}\` |"     >> "$NOTES"
-          echo "| **Linux**   | \`${KVER}\` |"      >> "$NOTES"
-          echo "| **Arch**    | \`${ARCH}\` |"      >> "$NOTES"
-          echo "| **Built**   | \`${BUILT_AT}\` |"  >> "$NOTES"
-          echo ""                                    >> "$NOTES"
-          echo "---"                                 >> "$NOTES"
-          echo ""                                    >> "$NOTES"
-          echo "## Files"                            >> "$NOTES"
-          echo ""                                    >> "$NOTES"
-          echo "| File | Description | Arch | Size |" >> "$NOTES"
-          echo "|---|---|---|---|"                   >> "$NOTES"
-          [ -f output/kernel-arm64          ] && echo "| \`kernel-arm64\`          | UML kernel binary | ARM64  | $(du -sh output/kernel-arm64 | cut -f1) |"          >> "$NOTES"
-          [ -f output/kernel-x86_64         ] && echo "| \`kernel-x86_64\`         | UML kernel binary | x86_64 | $(du -sh output/kernel-x86_64 | cut -f1) |"         >> "$NOTES"
-          [ -f output/modules-arm64.tar.gz  ] && echo "| \`modules-arm64.tar.gz\`  | Kernel modules    | ARM64  | $(du -sh output/modules-arm64.tar.gz | cut -f1) |"  >> "$NOTES"
-          [ -f output/modules-x86_64.tar.gz ] && echo "| \`modules-x86_64.tar.gz\` | Kernel modules    | x86_64 | $(du -sh output/modules-x86_64.tar.gz | cut -f1) |" >> "$NOTES"
-
           gh release create "$TAG" \
             --title "Kernel ${VERSION}" \
-            --notes-file "$NOTES" \
+            --notes "Automated release" \
             $RELEASE_FLAG \
             2>/dev/null || \
           gh release edit "$TAG" \
             --title "Kernel ${VERSION}" \
-            --notes-file "$NOTES" \
+            --notes "Automated release" \
             $RELEASE_FLAG
 
           for f in output/kernel-* output/modules-*.tar.gz; do

@@ -38,7 +38,7 @@ export BOOTSTRAP_TAG
 COMPOSE := docker compose --profile $(PROFILE)
 RUN     := $(COMPOSE) run --rm
 
-.PHONY: help build fetch test all shell image clean cache-clean ptrace-fix
+.PHONY: help build rootfs fetch test all shell image clean cache-clean ptrace-fix
 
 help:
 	@echo ""
@@ -50,6 +50,8 @@ help:
 	@echo "  Commands:"
 	@echo "    make all          build → fetch → test"
 	@echo "    make build        Build UML kernel + modules"
+	@echo "    make rootfs       Build Debian rootfs locally (bakes in modules)"
+	@echo "    make build-rootfs Build kernel then rootfs in one shot"
 	@echo "    make fetch        Download rootfs (latest stable release)"
 	@echo "    make test         Boot test"
 	@echo "    make shell        Shell interaktif di container"
@@ -71,6 +73,9 @@ image:
 build: image
 	$(RUN) dev-$(PROFILE) build
 
+rootfs: image
+	$(RUN) rootfs-$(PROFILE)
+
 fetch: image
 	$(RUN) dev-$(PROFILE) fetch
 
@@ -79,6 +84,8 @@ test: ptrace-fix
 
 all: image
 	$(RUN) dev-$(PROFILE) all
+
+build-rootfs: build rootfs
 
 shell: image
 	$(RUN) dev-$(PROFILE)

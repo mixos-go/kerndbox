@@ -39,6 +39,11 @@ RUN apt-get update -qq && \
       ca-certificates \
       # boot test helpers
       file \
+      # rootfs build
+      debootstrap \
+      qemu-user-static \
+      binfmt-support \
+      e2fsprogs \
       # GitHub CLI (for rootfs download from releases)
       gh \
     && rm -rf /var/lib/apt/lists/*
