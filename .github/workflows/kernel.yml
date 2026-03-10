@@ -73,7 +73,6 @@ jobs:
             chmod +x scripts/build-arm64.sh && sudo ./scripts/build-arm64.sh
           else
             chmod +x scripts/build-x86.sh && sudo ./scripts/build-x86.sh
-          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -111,42 +110,35 @@ jobs:
           echo "version=${VER}" >> $GITHUB_OUTPUT
 
       - name: Publish release
-        id: publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
         run: |
           VERSION="${{ github.event.inputs.version }}"
           LABEL="${{ github.event.inputs.label }}"
-          ARCH="${{ github.event.inputs.arch }}"
           KVER="${{ steps.kver.outputs.version }}"
           BUILT_AT="$(date '+%Y-%m-%d %H:%M UTC')"
-          REPO="${{ github.repository }}"
           TAG="kernel-${VERSION}"
-
-          LABEL_BADGE=""
-          if [ "$LABEL" = "latest" ]; then
-            LABEL_BADGE='![latest](https://img.shields.io/badge/label-latest-brightgreen)'
-          elif [ "$LABEL" = "experimental" ]; then
-            LABEL_BADGE='![experimental](https://img.shields.io/badge/label-experimental-orange)'
-          fi
 
           RELEASE_FLAG="--prerelease"
           [ "$LABEL" = "latest" ] && RELEASE_FLAG="--latest"
 
-          gh release create "$TAG" \
-            --title "Kernel ${VERSION}" \
-            --notes "Automated release" \
-            $RELEASE_FLAG \
-            2>/dev/null || \
-          gh release edit "$TAG" \
-            --title "Kernel ${VERSION}" \
-            --notes "Automated release" \
-            $RELEASE_FLAG
+          git push origin :refs/tags/${TAG} 2>/dev/null || true
+          gh release create "${TAG}"             --title "UML Kernel ${KVER} — ${VERSION} (${LABEL})"             --notes "UML kernel build for kerndbox/DevBox.
+
+          **Kernel:** Linux ${KVER}
+          **Version:** ${VERSION}
+          **Label:** ${LABEL}
+          **Built:** ${BUILT_AT}
+
+          Files:
+          - \`kernel-arm64\`          — UML kernel binary for ARM64
+          - \`kernel-x86_64\`         — UML kernel binary for x86_64
+          - \`modules-arm64.tar.gz\`  — Kernel modules ARM64
+          - \`modules-x86_64.tar.gz\` — Kernel modules x86_64
+
+          No KVM needed. No root needed. Runs entirely in userspace via ptrace."             $RELEASE_FLAG
 
           for f in output/kernel-* output/modules-*.tar.gz; do
-            [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber
+            [ -f "$f" ] && gh release upload "${TAG}" "$f" --clobber
           done
-
-          echo "Published: https://github.com/${REPO}/releases/tag/${TAG}"
 

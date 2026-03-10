@@ -94,7 +94,6 @@ jobs:
             echo "WARNING: modules-${ARCH_OUT}.tar.gz not found in ${KERNEL_TAG}"
             echo "  Rootfs will have empty /lib/modules/ — run kernel workflow first"
             echo "MODULES_TAR=" >> "$GITHUB_ENV"
-          fi
 
       - name: Build Debian rootfs (${{ matrix.arch_out }}) with modules
         run: |
@@ -130,42 +129,34 @@ jobs:
           path: ./output
 
       - name: Publish rootfs
-        id: publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
         run: |
           VERSION="${{ github.event.inputs.version }}"
           LABEL="${{ github.event.inputs.label }}"
-          ARCH="${{ github.event.inputs.arch }}"
           KERNEL_TAG="${{ github.event.inputs.kernel_tag }}"
           BUILT_AT="$(date '+%Y-%m-%d %H:%M UTC')"
-          REPO="${{ github.repository }}"
           TAG="bootstrap-${VERSION}"
-
-          LABEL_BADGE=""
-          if [ "$LABEL" = "latest" ]; then
-            LABEL_BADGE='![latest](https://img.shields.io/badge/label-latest-brightgreen)'
-          elif [ "$LABEL" = "experimental" ]; then
-            LABEL_BADGE='![experimental](https://img.shields.io/badge/label-experimental-orange)'
-          fi
 
           RELEASE_FLAG="--prerelease"
           [ "$LABEL" = "latest" ] && RELEASE_FLAG="--latest"
 
-          gh release create "$TAG" \
-            --title "Bootstrap ${VERSION}" \
-            --notes "Automated release" \
-            $RELEASE_FLAG \
-            2>/dev/null || \
-          gh release edit "$TAG" \
-            --title "Bootstrap ${VERSION}" \
-            --notes "Automated release" \
-            $RELEASE_FLAG
+          git push origin :refs/tags/${TAG} 2>/dev/null || true
+          gh release create "${TAG}"             --title "Debian Rootfs — ${VERSION} (${LABEL})"             --notes "Debian bookworm rootfs for kerndbox/DevBox.
+
+          **Version:** ${VERSION}
+          **Label:** ${LABEL}
+          **Kernel tag:** ${KERNEL_TAG}
+          **Built:** ${BUILT_AT}
+
+          Files:
+          - \`debian-rootfs-aarch64.img\` — Debian rootfs for ARM64
+          - \`debian-rootfs-x86_64.img\`  — Debian rootfs for x86_64
+
+          Kernel modules baked in. modprobe works out of the box.
+          Boot with UML kernel from ${KERNEL_TAG}."             $RELEASE_FLAG
 
           for f in output/debian-rootfs-*.img; do
-            [ -f "$f" ] && gh release upload "$TAG" "$f" --clobber
+            [ -f "$f" ] && gh release upload "${TAG}" "$f" --clobber
           done
-
-          echo "Published: https://github.com/${REPO}/releases/tag/${TAG}"
 
