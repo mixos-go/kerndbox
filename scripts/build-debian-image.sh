@@ -26,17 +26,27 @@ HOST_ARCH="$(uname -m)"
 log "ARCH=$ARCH  HOST_ARCH=$HOST_ARCH"
 mkdir -p "$OUTPUT_DIR"
 
+install_deps() {
+    log "Installing rootfs build dependencies..."
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq
+    apt-get install -y --no-install-recommends \
+        debootstrap \
+        e2fsprogs dosfstools \
+        fdisk util-linux \
+        qemu-user-static binfmt-support \
+        zstd xz-utils gzip bzip2 \
+        curl wget ca-certificates \
+        gnupg gpg \
+        systemd-container \
+        git rsync cpio python3
+    # Activate binfmt handlers for qemu-user-static
+    systemctl restart systemd-binfmt 2>/dev/null || \
+        update-binfmts --enable qemu-aarch64 2>/dev/null || true
+    log "Dependencies installed."
+}
+
 check_deps() {
-    local missing=()
-    for cmd in debootstrap mke2fs; do
-        command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
-    done
-    # qemu-aarch64-static needed only for cross-build (aarch64 on x86_64 host)
-    if [ "$HOST_ARCH" = "x86_64" ] && [ "$ARCH" != "x86_64" ]; then
-        [ -f "/usr/bin/qemu-aarch64-static" ] || missing+=("qemu-user-static")
-    fi
-    [ ${#missing[@]} -gt 0 ] && \
-        die "Missing tools: ${missing[*]} -- run: apt install debootstrap e2fsprogs qemu-user-static binfmt-support"
     log "Deps OK: debootstrap=$(command -v debootstrap) mke2fs=$(command -v mke2fs)"
     mke2fs -V 2>&1 | head -1 | sed 's/^/[DevBox] /'
 }
@@ -184,6 +194,7 @@ ZSHRC
     log "Done: $raw_img ($(du -sh "$raw_img" | cut -f1))"
 }
 
+install_deps
 check_deps
 
 case "$ARCH" in

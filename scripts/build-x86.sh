@@ -26,6 +26,31 @@ echo "[build] Started: $(date '+%Y-%m-%d %H:%M:%S')"
 log() { echo "[DevBox] $*"; }
 die() { echo "[DevBox][ERROR] $*" >&2; exit 1; }
 
+# ── Install build dependencies (apt) ─────────────────────────────────────────
+log "Installing build dependencies..."
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -qq
+apt-get install -y --no-install-recommends \
+    `# Core toolchain` \
+    gcc g++ binutils make bash pkg-config \
+    `# Kernel build essentials` \
+    flex bison bc libssl-dev libelf-dev libncurses-dev \
+    `# BTF / DWARF / BPF debug info` \
+    pahole dwarves libdw-dev \
+    `# LLVM + Clang (bindgen uses libclang)` \
+    llvm clang libclang-dev lld \
+    `# Kernel scripts + utils` \
+    python3 perl gawk \
+    rsync kmod cpio \
+    xz-utils tar gzip bzip2 zstd \
+    openssl \
+    `# Misc` \
+    git patch diffutils wget curl ca-certificates \
+    util-linux e2fsprogs \
+    u-boot-tools
+
+
+
 # ── Verify we are on x86_64 ─────────────────────────────────────────────────
 HOST_ARCH="$(uname -m)"
 [[ "$HOST_ARCH" != "x86_64" ]] && \
@@ -46,6 +71,31 @@ if [[ ! -d "$SRC_DIR" ]]; then
     log "Extracting..."
     tar -xf "$TARBALL" -C /tmp
 fi
+
+# ── Rust + bindgen ────────────────────────────────────────────────────────────
+# Debian bookworm rustc (1.63) too old — kernel 6.12 needs 1.78.0+
+# Debian bookworm bindgen (0.60.1) too old — kernel needs 0.65.1+
+if ! command -v rustup >/dev/null 2>&1; then
+    log "Installing rustup..."
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --default-toolchain none
+fi
+export PATH="/root/.cargo/bin:$PATH"
+
+# Read required Rust version from kernel source
+RUST_VER="$(scripts/min-tool-version.sh rustc 2>/dev/null | head -1 || echo '1.82.0')"
+log "Installing Rust ${RUST_VER}..."
+rustup toolchain install "${RUST_VER}" --profile minimal
+rustup component add rust-src rustfmt clippy
+rustup override set "${RUST_VER}"
+
+# bindgen via cargo (apt version too old)
+if ! command -v bindgen >/dev/null 2>&1; then
+    log "Installing bindgen..."
+    cargo install --locked bindgen-cli
+fi
+log "Toolchain: gcc=$(gcc --version | head -1) | rustc=$(rustc --version) | bindgen=$(bindgen --version)"
+
 
 # ── Configure ────────────────────────────────────────────────────────────────
 # x86_64 UML uses upstream defconfig — no custom port needed.

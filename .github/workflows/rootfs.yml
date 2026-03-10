@@ -67,12 +67,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          apt-get update -qq
-          apt-get install -y --no-install-recommends \
-            debootstrap qemu-user-static binfmt-support e2fsprogs
-
       - name: Enable binfmt for cross-arch chroot
         run: systemctl restart systemd-binfmt 2>/dev/null || true
 
