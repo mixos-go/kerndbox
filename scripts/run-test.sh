@@ -98,7 +98,16 @@ log "==========================="
 BOOT_PASS=0
 set +e
 
-echo 'echo DEVBOX_BOOT_OK && poweroff -f' | \
+# Use a marker FILE written by the guest, not grep on the log.
+# Grep on log is unreliable — bash error messages can contain the magic string.
+MARKER_FILE="/tmp/uml-boot-ok-$$"
+rm -f "$MARKER_FILE"
+
+# init=/bin/sh reads from stdin (con=fd:0,fd:1).
+# We write the marker to a hostfs path so UML can touch it.
+# Fallback: also print the marker to stdout so it appears in the log,
+# then detect it with grep anchored to line-start to avoid bash error output.
+printf 'echo DEVBOX_BOOT_OK; touch %s; poweroff -f\n' "$MARKER_FILE" | \
 timeout 90 "$UML_BIN" \
     "ubd0=${ROOTFS}" \
     root=/dev/ubda \
@@ -114,18 +123,25 @@ log "==========================="
 log "UML exit code: $EXIT_CODE"
 
 # ── Result ───────────────────────────────────────────────────────────────────
-# Re-read log to check for magic string (we tee'd UML output into same file)
-if grep -q "DEVBOX_BOOT_OK" "$BOOT_LOG"; then
+# Check marker file first (reliable), fall back to anchored grep in log.
+# grep pattern anchored so bash error messages like
+#   "echo 'echo DEVBOX_BOOT_OK ...'" don't match.
+if [[ -f "$MARKER_FILE" ]] || grep -qP '^DEVBOX_BOOT_OK$' "$BOOT_LOG" 2>/dev/null; then
+    rm -f "$MARKER_FILE"
     log "✅  BOOT TEST PASSED"
     BOOT_PASS=1
 else
+    rm -f "$MARKER_FILE"
     log "❌  BOOT TEST FAILED"
     grep -q "Kernel panic"          "$BOOT_LOG" && grep "Kernel panic" "$BOOT_LOG" | head -3 | sed 's/^/  /'
     grep -q "VFS: Cannot open root" "$BOOT_LOG" && log "→ Root filesystem mount failed"
-    grep -q "No init found"         "$BOOT_LOG" && log "→ init=/bin/sh not found in rootfs"
+    grep -q "No init found"         "$BOOT_LOG" && log "→ init not found in rootfs"
     grep -q "check_ptrace\|ptrace"  "$BOOT_LOG" && log "→ ptrace failure — host: sudo sysctl -w kernel.yama.ptrace_scope=0"
-    grep -q "noexec"                "$BOOT_LOG" && log "→ /dev/shm noexec — tambah --tmpfs /dev/shm:exec ke docker run, atau privileged=true"
-    [[ "$EXIT_CODE" -eq 124 ]]                  && log "→ Timeout (90s)"
+    grep -q "noexec"                "$BOOT_LOG" && log "→ /dev/shm noexec — tambah --tmpfs /dev/shm:exec ke docker run"
+    [[ "$EXIT_CODE" -eq 124 ]]                  && log "→ Timeout (90s) — kernel mungkin hang saat boot"
+    [[ "$EXIT_CODE" -eq 134 ]]                  && log "→ UML crash (SIGABRT/core dump) — crash sebelum init jalan"
+    [[ "$EXIT_CODE" -eq 134 ]]                  && log "  Kemungkinan: modules tidak match rootfs, atau bug di startup code"
+    [[ "$EXIT_CODE" -eq 134 ]]                  && log "  Coba: make fetch untuk download rootfs yang match kernel ini"
 fi
 
 log "Full log: $BOOT_LOG"
