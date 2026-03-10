@@ -64,6 +64,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install gh
+        run: |
+            apt update
+            apt install -y gh
+
       - name: Download kernel
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
