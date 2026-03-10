@@ -74,6 +74,7 @@ jobs:
           else
             chmod +x scripts/build-x86.sh && sudo ./scripts/build-x86.sh
           fi
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -131,10 +132,10 @@ jobs:
           **Built:** ${BUILT_AT}
 
           Files:
-          - \`kernel-arm64\`          — UML kernel binary for ARM64
-          - \`kernel-x86_64\`         — UML kernel binary for x86_64
-          - \`modules-arm64.tar.gz\`  — Kernel modules ARM64
-          - \`modules-x86_64.tar.gz\` — Kernel modules x86_64
+          - kernel-arm64          — UML kernel binary for ARM64
+          - kernel-x86_64         — UML kernel binary for x86_64
+          - modules-arm64.tar.gz  — Kernel modules ARM64
+          - modules-x86_64.tar.gz — Kernel modules x86_64
 
           No KVM needed. No root needed. Runs entirely in userspace via ptrace."             $RELEASE_FLAG
 
