@@ -67,7 +67,8 @@ jobs:
       - name: Install gh
         run: |
             apt update
-            apt install -y gh
+            apt install -y gh ca-certificates
+            update-ca-certificates
 
       - name: Download kernel
         env:
