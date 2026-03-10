@@ -1,12 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * arch/arm64/um/vdso/vdso.lds.S
+ * arch/arm64/um/vdso/vdso.lds
  * Linker script for UML arm64 vDSO shared object.
- * Adapted from arch/x86/um/vdso/vdso.lds.S
  *
- * Note: do NOT #include <asm/page.h> here. The cpp output from kernel
- * headers confuses ld's linker script parser with "syntax error" on
- * the preprocessed .lds.tmp file.
+ * Every section needs an explicit :phdr tag — sections without one
+ * inherit from the previous section's assignment, which causes
+ * ".hash being made into a note" if .note appears first.
+ *
+ * Do NOT use .lds.S — cpp_lds_S injects kernel headers that confuse ld.
  */
 
 OUTPUT_FORMAT("elf64-littleaarch64", "elf64-littleaarch64", "elf64-littleaarch64")
@@ -14,19 +15,23 @@ OUTPUT_ARCH(aarch64)
 
 SECTIONS {
 	. = SIZEOF_HEADERS;
-	.hash		: { *(.hash) }
-	.gnu.hash	: { *(.gnu.hash) }
-	.dynsym		: { *(.dynsym) }
-	.dynstr		: { *(.dynstr) }
-	.gnu.version	: { *(.gnu.version) }
-	.gnu.version_d	: { *(.gnu.version_d) }
-	.gnu.version_r	: { *(.gnu.version_r) }
+	.hash		: { *(.hash) }			:text
+	.gnu.hash	: { *(.gnu.hash) }		:text
+	.dynsym		: { *(.dynsym) }		:text
+	.dynstr		: { *(.dynstr) }		:text
+	.gnu.version	: { *(.gnu.version) }		:text
+	.gnu.version_d	: { *(.gnu.version_d) }		:text
+	.gnu.version_r	: { *(.gnu.version_r) }		:text
 
-	.note		: { *(.note.*) }		:note :text
 	.eh_frame_hdr	: { *(.eh_frame_hdr) }		:text
 	.eh_frame	: { KEEP (*(.eh_frame)) }	:text
 
-	.dynamic	: { *(.dynamic) }		:text :dynamic
+	.dynamic	: { *(.dynamic) }		:dynamic
+
+	.note		: { *(.note.*) }		:note
+	.note.linux	: { *(.note.linux) }		:note
+
+	.text		: { *(.text*) }			:text
 
 	.useless	: {
 		*(.discard)
@@ -36,12 +41,7 @@ SECTIONS {
 		*(.bss)
 	}					:text
 
-	/* vDSO code */
-	.text		: { *(.text*) }			:text
-	/* vdso-note.S */
-	.note.linux	: { *(.note.linux) }		:note
-
-	/DISCARD/	: {
+	/DISCARD/ : {
 		*(.got.plt)
 		*(.got)
 		*(.plt*)
