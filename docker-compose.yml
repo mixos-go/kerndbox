@@ -1,29 +1,12 @@
 # kerndbox — docker-compose.yml
 #
-# UML CANNOT be cross-compiled. Use the correct profile for your host:
-#
-#   On arm64 host:
-#     docker compose --profile arm64 run --rm build-arm64
-#     docker compose --profile arm64 run --rm test-arm64
-#     docker compose --profile arm64 run --rm dev-arm64
-#
-#   On x86_64 host:
-#     docker compose --profile x86 run --rm build-x86
-#     docker compose --profile x86 run --rm test-x86
-#     docker compose --profile x86 run --rm dev-x86
+#   On arm64 host:  docker compose --profile arm64 run --rm {service}-arm64
+#   On x86_64 host: docker compose --profile x86   run --rm {service}-x86
 #
 # Prerequisites on HOST (for boot test):
 #   sudo sysctl -w kernel.yama.ptrace_scope=0
 
-# ── Shared config blocks ─────────────────────────────────────────────────────
-x-common-arm64: &common-arm64
-  build:
-    context: .
-    dockerfile: Dockerfile
-    platforms:
-      - linux/arm64
-  image: kerndbox:arm64
-  platform: linux/arm64
+x-base: &base
   privileged: true
   security_opt:
     - seccomp:unconfined
@@ -36,83 +19,110 @@ x-common-arm64: &common-arm64
     - GH_TOKEN=${GH_TOKEN:-}
     - BOOTSTRAP_TAG=${BOOTSTRAP_TAG:-}
 
-x-common-x86: &common-x86
-  build:
-    context: .
-    dockerfile: Dockerfile
-    platforms:
-      - linux/amd64
-  image: kerndbox:x86
-  platform: linux/amd64
+# UML needs /dev/shm exec — docker mounts it noexec by default
+# Only test + dev services need this (build/rootfs don't launch UML)
+x-shm: &shm
   privileged: true
   security_opt:
     - seccomp:unconfined
-  volumes:
-    - .:/workspace
-    - kerndbox-cache:/cache
-  working_dir: /workspace
-  environment:
-    - GITHUB_REPO=${GITHUB_REPO:-mixos-go/kerndbox}
-    - GH_TOKEN=${GH_TOKEN:-}
-    - BOOTSTRAP_TAG=${BOOTSTRAP_TAG:-}
-
-# /dev/shm must be exec for UML. Docker mounts it noexec by default.
-# Override with an exec tmpfs. Size 512m matches UML mem= in run-test.sh.
-x-shm-exec: &shm-exec
   tmpfs:
     - /dev/shm:exec,size=512m
+  volumes:
+    - .:/workspace
+    - kerndbox-cache:/cache
+  working_dir: /workspace
+  environment:
+    - GITHUB_REPO=${GITHUB_REPO:-mixos-go/kerndbox}
+    - GH_TOKEN=${GH_TOKEN:-}
+    - BOOTSTRAP_TAG=${BOOTSTRAP_TAG:-}
 
 services:
 
   # ── arm64 ─────────────────────────────────────────────────────────────────
   build-arm64:
-    <<: *common-arm64
+    <<: *base
     profiles: [arm64]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kerndbox:arm64
+    platform: linux/arm64
     command: build
 
-  test-arm64:
-    <<: *common-arm64
-    <<: *shm-exec
+  rootfs-arm64:
+    <<: *base
     profiles: [arm64]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kerndbox:arm64
+    platform: linux/arm64
+    command: rootfs
+
+  test-arm64:
+    <<: *shm
+    profiles: [arm64]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kerndbox:arm64
+    platform: linux/arm64
     command: test
 
   dev-arm64:
-    <<: *common-arm64
-    <<: *shm-exec
+    <<: *shm
     profiles: [arm64]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kerndbox:arm64
+    platform: linux/arm64
     stdin_open: true
     tty: true
     command: bash
-
-  rootfs-arm64:
-    <<: *common-arm64
-    profiles: [arm64]
-    command: rootfs
 
   # ── x86_64 ────────────────────────────────────────────────────────────────
   build-x86:
-    <<: *common-x86
+    <<: *base
     profiles: [x86]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kerndbox:x86
+    platform: linux/amd64
     command: build
 
-  test-x86:
-    <<: *common-x86
-    <<: *shm-exec
+  rootfs-x86:
+    <<: *base
     profiles: [x86]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kerndbox:x86
+    platform: linux/amd64
+    command: rootfs
+
+  test-x86:
+    <<: *shm
+    profiles: [x86]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kerndbox:x86
+    platform: linux/amd64
     command: test
 
   dev-x86:
-    <<: *common-x86
-    <<: *shm-exec
+    <<: *shm
     profiles: [x86]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kerndbox:x86
+    platform: linux/amd64
     stdin_open: true
     tty: true
     command: bash
-
-  rootfs-x86:
-    <<: *common-x86
-    profiles: [x86]
-    command: rootfs
 
 volumes:
   kerndbox-cache:

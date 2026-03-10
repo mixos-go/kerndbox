@@ -17,6 +17,7 @@
 #include "registers.h"
 #include "skas/skas.h"
 #include <sysdep/ptrace_user.h>
+#include <sysdep/ptrace.h>
 
 /* Forward declarations — used by arch/um/os-Linux/skas/process.c */
 int save_registers(int pid, struct uml_pt_regs *regs);
@@ -93,6 +94,23 @@ int put_fp_registers(int pid, unsigned long *regs)
 	if (ptrace(PTRACE_SETREGSET, pid, (void *)(long)NT_PRFPREG, &iov) < 0)
 		return -errno;
 	return 0;
+}
+
+/*
+ * get_safe_registers — fill regs with a safe initial register state.
+ *
+ * Called by arch/um/os-Linux/skas/mem.c and arch/um/kernel/exec.c before
+ * a new thread or exec starts. On x86, this copies the registers captured
+ * at UML startup (exec_regs). On arm64 we zero GP regs — the caller will
+ * set PC/SP before the thread actually runs.
+ *
+ * fp_regs is unused on arm64 UML: NEON/SIMD state is managed by the host
+ * kernel, not by UML kernel code.
+ */
+void get_safe_registers(unsigned long *regs, unsigned long *fp_regs)
+{
+	memset(regs, 0, MAX_REG_NR * sizeof(unsigned long));
+	/* fp_regs intentionally ignored — no NEON state in UML context */
 }
 
 /* ── arch_init_registers ─────────────────────────────────────────────────── */
