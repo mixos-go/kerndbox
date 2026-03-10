@@ -57,6 +57,8 @@ typedef struct user_fpsimd_state elf_fpregset_t;
 
 /* arch_setup_additional_pages() is implemented in arch/arm64/um/vdso/vma.c */
 #define ARCH_HAS_SETUP_ADDITIONAL_PAGES 1
+struct linux_binprm;
+extern int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp);
 
 #define ELF_EXEC_PAGESIZE   PAGE_SIZE
 #define ELF_ET_DYN_BASE     (TASK_SIZE / 3 * 2)
