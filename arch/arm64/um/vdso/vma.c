@@ -9,6 +9,7 @@
 #include <linux/slab.h>
 #include <linux/sched.h>
 #include <linux/mm.h>
+#include <linux/binfmts.h>
 #include <asm/page.h>
 #include <asm/elf.h>
 #include <linux/init.h>

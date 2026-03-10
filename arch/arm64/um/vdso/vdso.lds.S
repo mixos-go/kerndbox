@@ -3,9 +3,11 @@
  * arch/arm64/um/vdso/vdso.lds.S
  * Linker script for UML arm64 vDSO shared object.
  * Adapted from arch/x86/um/vdso/vdso.lds.S
+ *
+ * Note: do NOT #include <asm/page.h> here. The cpp output from kernel
+ * headers confuses ld's linker script parser with "syntax error" on
+ * the preprocessed .lds.tmp file.
  */
-
-#include <asm/page.h>
 
 OUTPUT_FORMAT("elf64-littleaarch64", "elf64-littleaarch64", "elf64-littleaarch64")
 OUTPUT_ARCH(aarch64)

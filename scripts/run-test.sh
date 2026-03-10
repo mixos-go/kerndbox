@@ -80,15 +80,6 @@ else
     log "/dev/shm exec ✓"
 fi
 
-# ── ptrace_scope check ───────────────────────────────────────────────────────
-PTRACE_SCOPE="$(cat /proc/sys/kernel/yama/ptrace_scope 2>/dev/null || echo 0)"
-if [[ "$PTRACE_SCOPE" -gt 0 ]]; then
-    warn "kernel.yama.ptrace_scope=$PTRACE_SCOPE — UML needs 0 on the HOST"
-    warn "Host: sudo sysctl -w kernel.yama.ptrace_scope=0"
-    warn "Continuing — may fail..."
-else
-    log "ptrace_scope=0 ✓"
-fi
 
 # ── Boot UML ─────────────────────────────────────────────────────────────────
 log "==========================="
@@ -136,7 +127,6 @@ else
     grep -q "Kernel panic"          "$BOOT_LOG" && grep "Kernel panic" "$BOOT_LOG" | head -3 | sed 's/^/  /'
     grep -q "VFS: Cannot open root" "$BOOT_LOG" && log "→ Root filesystem mount failed"
     grep -q "No init found"         "$BOOT_LOG" && log "→ init not found in rootfs"
-    grep -q "check_ptrace\|ptrace"  "$BOOT_LOG" && log "→ ptrace failure — host: sudo sysctl -w kernel.yama.ptrace_scope=0"
     grep -q "noexec"                "$BOOT_LOG" && log "→ /dev/shm noexec — tambah --tmpfs /dev/shm:exec ke docker run"
     [[ "$EXIT_CODE" -eq 124 ]]                  && log "→ Timeout (90s) — kernel mungkin hang saat boot"
     [[ "$EXIT_CODE" -eq 134 ]]                  && log "→ UML crash (SIGABRT/core dump) — crash sebelum init jalan"

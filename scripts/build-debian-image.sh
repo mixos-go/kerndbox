@@ -82,7 +82,7 @@ build_rootfs() {
     log "Running debootstrap ($deb_arch)..."
     debootstrap \
         --arch="$deb_arch" \
-        --include="openssh-server,curl,socat,sudo,bash,zsh,coreutils,util-linux,net-tools,iproute2,procps,less,vim-tiny,ca-certificates,wget" \
+        --include="openssh-server,curl,socat,sudo,bash,zsh,coreutils,util-linux,net-tools,iproute2,procps,less,vim-tiny,ca-certificates,wget,gcc,g++,make,libc6-dev,libc-dev-bin,musl-tools,musl-dev,binutils,pkg-config,libssl-dev" \
         "$DEBIAN_SUITE" "$work_dir" "https://deb.debian.org/debian"
     log "debootstrap done"
 

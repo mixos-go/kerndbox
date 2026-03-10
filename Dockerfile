@@ -72,7 +72,6 @@ RUN ln -s /cache /tmp/kernel-cache
 
 WORKDIR /workspace
 
-# ── Helper: detect arch and print what to run ────────────────────────────────
 COPY scripts/entrypoint.sh /usr/local/bin/kerndbox-entrypoint
 RUN chmod +x /usr/local/bin/kerndbox-entrypoint
 

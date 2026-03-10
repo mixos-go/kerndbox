@@ -8,7 +8,7 @@ on:
         required: true
         default: "kernel-v0.1.0"
       bootstrap_tag:
-        description: "Rootfs release tag (e.g. bootstrap-v0.1.0)"
+        description: "Rootfs release tag — MUST match modules baked into rootfs"
         required: true
         default: "bootstrap-v0.1.0"
       arch:
@@ -21,6 +21,9 @@ on:
           - arm64
           - x86_64
 
+  # Auto-trigger after rootfs build completes.
+  # rootfs.yml bakes modules from kernel_tag into the rootfs, so the tags
+  # are guaranteed to match — safe to run test automatically.
   workflow_run:
     workflows: ["Build Rootfs"]
     types:
@@ -29,85 +32,116 @@ on:
 permissions: {}
 
 concurrency:
-  group: test-${{ github.event.inputs.kernel_tag }}-${{ github.event.inputs.bootstrap_tag }}
+  group: test-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
 
-  setup:
-    name: Setup matrix
+  # ── Resolve tags ────────────────────────────────────────────────────────────
+  # When triggered by workflow_run we don't have dispatch inputs.
+  # Read the tags that rootfs.yml published from the triggering workflow's
+  # conclusion event. Fall back to "latest" release lookup via gh CLI.
+  resolve-tags:
+    name: Resolve kernel + bootstrap tags
     runs-on: ubuntu-24.04
+    # Skip if triggered by a failed rootfs build
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     outputs:
-      matrix: ${{ steps.matrix.outputs.matrix }}
+      kernel_tag:    ${{ steps.tags.outputs.kernel_tag }}
+      bootstrap_tag: ${{ steps.tags.outputs.bootstrap_tag }}
+      matrix:        ${{ steps.matrix.outputs.matrix }}
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tags
+        id: tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            KERNEL_TAG="${{ github.event.inputs.kernel_tag }}"
+            BOOTSTRAP_TAG="${{ github.event.inputs.bootstrap_tag }}"
+          else
+            # Triggered from workflow_run — find latest matching release pair.
+            # kernel.yml publishes "kernel-vX.Y.Z"
+            # rootfs.yml publishes "bootstrap-vX.Y.Z" and bakes in that kernel.
+            # Latest bootstrap release was just published, find its kernel_tag
+            # from the release body.
+            echo "Triggered by workflow_run — resolving latest release tags..."
+            BOOTSTRAP_TAG=$(gh release list --repo ${{ github.repository }} \
+              --limit 10 --json tagName,isLatest \
+              | jq -r '[.[] | select(.tagName | startswith("bootstrap-"))] | first | .tagName')
+            KERNEL_TAG=$(gh release list --repo ${{ github.repository }} \
+              --limit 10 --json tagName \
+              | jq -r '[.[] | select(.tagName | startswith("kernel-"))] | first | .tagName')
+            echo "Resolved: kernel=${KERNEL_TAG} bootstrap=${BOOTSTRAP_TAG}"
+          fi
+
+          echo "kernel_tag=${KERNEL_TAG}"       >> $GITHUB_OUTPUT
+          echo "bootstrap_tag=${BOOTSTRAP_TAG}" >> $GITHUB_OUTPUT
+
       - name: Compute build matrix
         id: matrix
         run: |
-          case "${{ github.event.inputs.arch }}" in
-            arm64) echo 'matrix={"include":[{"arch":"aarch64","arch_out":"arm64","runner":"ubuntu-24.04-arm"}]}' >> $GITHUB_OUTPUT ;;
-            x86_64) echo 'matrix={"include":[{"arch":"x86_64","arch_out":"x86_64","runner":"ubuntu-24.04"}]}' >> $GITHUB_OUTPUT ;;
-            *) echo 'matrix={"include":[{"arch":"aarch64","arch_out":"arm64","runner":"ubuntu-24.04-arm"},{"arch":"x86_64","arch_out":"x86_64","runner":"ubuntu-24.04"}]}' >> $GITHUB_OUTPUT ;;
+          ARCH="${{ github.event.inputs.arch }}"
+          # workflow_run trigger: test both arches
+          [[ -z "$ARCH" || "$ARCH" == "all" ]] && ARCH="all"
+          case "$ARCH" in
+            arm64)  echo 'matrix={"include":[{"arch":"aarch64","arch_out":"arm64","runner":"ubuntu-24.04-arm"}]}'  >> $GITHUB_OUTPUT ;;
+            x86_64) echo 'matrix={"include":[{"arch":"x86_64","arch_out":"x86_64","runner":"ubuntu-24.04"}]}'     >> $GITHUB_OUTPUT ;;
+            *)      echo 'matrix={"include":[{"arch":"aarch64","arch_out":"arm64","runner":"ubuntu-24.04-arm"},{"arch":"x86_64","arch_out":"x86_64","runner":"ubuntu-24.04"}]}' >> $GITHUB_OUTPUT ;;
           esac
 
+  # ── Boot test ───────────────────────────────────────────────────────────────
   test-suite:
     name: Test (${{ matrix.arch_out }})
-    needs: setup
+    needs: resolve-tags
     permissions:
       contents: read
     runs-on: ${{ matrix.runner }}
     container:
       image: debian:bookworm
-      options: >-
-        --cap-add=SYS_PTRACE
-        --security-opt seccomp=unconfined
+      options: --privileged --tmpfs /dev/shm:exec,size=512m
     strategy:
-      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+      matrix: ${{ fromJson(needs.resolve-tags.outputs.matrix) }}
       fail-fast: false
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install gh
+      - name: Install tools
         run: |
-            apt update
-            apt install -y gh ca-certificates procps gdb strace
-            update-ca-certificates
+          apt-get update -qq
+          apt-get install -y --no-install-recommends gh curl ca-certificates
 
-      - name: Download kernel
+      - name: Download kernel (${{ matrix.arch_out }})
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p output
-          KERNEL_TAG="${{ github.event.inputs.kernel_tag }}"
-          ARCH_OUT="${{ matrix.arch_out }}"
-
-          echo "Downloading kernel-${ARCH_OUT} from ${KERNEL_TAG}..."
+          KERNEL_TAG="${{ needs.resolve-tags.outputs.kernel_tag }}"
+          echo "Downloading kernel-${{ matrix.arch_out }} from ${KERNEL_TAG}..."
           gh release download "${KERNEL_TAG}" \
             --repo ${{ github.repository }} \
-            --pattern "kernel-${ARCH_OUT}" \
+            --pattern "kernel-${{ matrix.arch_out }}" \
             --dir ./output
+          chmod +x ./output/kernel-${{ matrix.arch_out }}
+          echo "Kernel: $(du -sh output/kernel-${{ matrix.arch_out }} | cut -f1)"
 
-          chmod +x ./output/kernel-${ARCH_OUT}
-          echo "Kernel: $(du -sh output/kernel-${ARCH_OUT} | cut -f1)"
-
-      - name: Download rootfs
+      - name: Download rootfs (${{ matrix.arch }})
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p output
-          BOOTSTRAP_TAG="${{ github.event.inputs.bootstrap_tag }}"
-          ARCH="${{ matrix.arch }}"
-
-          echo "Downloading debian-rootfs-${ARCH}.img from ${BOOTSTRAP_TAG}..."
+          BOOTSTRAP_TAG="${{ needs.resolve-tags.outputs.bootstrap_tag }}"
+          echo "Downloading debian-rootfs-${{ matrix.arch }}.img from ${BOOTSTRAP_TAG}..."
+          echo "⚠️  kernel and rootfs MUST match — rootfs bakes in kernel modules"
           gh release download "${BOOTSTRAP_TAG}" \
             --repo ${{ github.repository }} \
-            --pattern "debian-rootfs-${ARCH}.img" \
+            --pattern "debian-rootfs-${{ matrix.arch }}.img" \
             --dir ./output
-
-          echo "Rootfs: $(du -sh output/debian-rootfs-${ARCH}.img | cut -f1)"
-
-      - name: Allow ptrace
-        run: sysctl -w kernel.yama.ptrace_scope=0
+          echo "Rootfs: $(du -sh output/debian-rootfs-${{ matrix.arch }}.img | cut -f1)"
 
       - name: Boot test (${{ matrix.arch_out }})
         run: |

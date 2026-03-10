@@ -3,10 +3,19 @@
 #   On arm64 host:  docker compose --profile arm64 run --rm {service}-arm64
 #   On x86_64 host: docker compose --profile x86   run --rm {service}-x86
 #
-# Prerequisites on HOST (for boot test):
-#   sudo sysctl -w kernel.yama.ptrace_scope=0
+# By default pulls prebuilt image from ghcr.io/mixos-go/kerndbox.
+# To build locally instead:
+#   docker compose --profile arm64 build build-arm64
+#   KERNDBOX_IMAGE=kerndbox:arm64 docker compose ...
 
-x-base: &base
+x-base-arm64: &base-arm64
+  image: ${KERNDBOX_IMAGE:-ghcr.io/mixos-go/kerndbox:arm64}
+  build:
+    context: .
+    dockerfile: Dockerfile
+    platforms:
+      - linux/arm64
+  platform: linux/arm64
   privileged: true
   security_opt:
     - seccomp:unconfined
@@ -19,107 +28,78 @@ x-base: &base
     - GH_TOKEN=${GH_TOKEN:-}
     - BOOTSTRAP_TAG=${BOOTSTRAP_TAG:-}
 
-# UML needs /dev/shm exec — docker mounts it noexec by default
-# Only test + dev services need this (build/rootfs don't launch UML)
-x-shm: &shm
+x-base-x86: &base-x86
+  image: ${KERNDBOX_IMAGE:-ghcr.io/mixos-go/kerndbox:x86}
+  build:
+    context: .
+    dockerfile: Dockerfile
+    platforms:
+      - linux/amd64
+  platform: linux/amd64
   privileged: true
   security_opt:
     - seccomp:unconfined
+  volumes:
+    - .:/workspace
+    - kerndbox-cache:/cache
+  working_dir: /workspace
+  environment:
+    - GITHUB_REPO=${GITHUB_REPO:-mixos-go/kerndbox}
+    - GH_TOKEN=${GH_TOKEN:-}
+    - BOOTSTRAP_TAG=${BOOTSTRAP_TAG:-}
+
+x-shm: &shm
   tmpfs:
     - /dev/shm:exec,size=512m
-  volumes:
-    - .:/workspace
-    - kerndbox-cache:/cache
-  working_dir: /workspace
-  environment:
-    - GITHUB_REPO=${GITHUB_REPO:-mixos-go/kerndbox}
-    - GH_TOKEN=${GH_TOKEN:-}
-    - BOOTSTRAP_TAG=${BOOTSTRAP_TAG:-}
 
 services:
 
   # ── arm64 ─────────────────────────────────────────────────────────────────
   build-arm64:
-    <<: *base
+    <<: *base-arm64
     profiles: [arm64]
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: kerndbox:arm64
-    platform: linux/arm64
     command: build
 
   rootfs-arm64:
-    <<: *base
+    <<: *base-arm64
     profiles: [arm64]
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: kerndbox:arm64
-    platform: linux/arm64
     command: rootfs
 
   test-arm64:
+    <<: *base-arm64
     <<: *shm
     profiles: [arm64]
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: kerndbox:arm64
-    platform: linux/arm64
     command: test
 
   dev-arm64:
+    <<: *base-arm64
     <<: *shm
     profiles: [arm64]
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: kerndbox:arm64
-    platform: linux/arm64
     stdin_open: true
     tty: true
     command: bash
 
   # ── x86_64 ────────────────────────────────────────────────────────────────
   build-x86:
-    <<: *base
+    <<: *base-x86
     profiles: [x86]
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: kerndbox:x86
-    platform: linux/amd64
     command: build
 
   rootfs-x86:
-    <<: *base
+    <<: *base-x86
     profiles: [x86]
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: kerndbox:x86
-    platform: linux/amd64
     command: rootfs
 
   test-x86:
+    <<: *base-x86
     <<: *shm
     profiles: [x86]
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: kerndbox:x86
-    platform: linux/amd64
     command: test
 
   dev-x86:
+    <<: *base-x86
     <<: *shm
     profiles: [x86]
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: kerndbox:x86
-    platform: linux/amd64
     stdin_open: true
     tty: true
     command: bash

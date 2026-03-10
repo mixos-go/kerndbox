@@ -42,8 +42,9 @@ SCRIPTS := $(CURDIR)/scripts
 
 .PHONY: help menu \
         build rootfs fetch test all shell image \
+        pull pull-arm64 pull-x86 pull-all \
         patch patch-dry patch-local patch-up patch-full patch-ver \
-        ptrace-fix clean cache-clean
+        ptrace-fix clean image-clean image-clean-all cache-clean
 
 help:
 	@echo ""
@@ -67,6 +68,15 @@ help:
 	@printf "  %-24s  %s\n" "make patch-full"    "Download + apply + makecheck"
 	@printf "  %-24s  %s\n" "make patch-ver"     "Daftar semua patch"
 	@echo ""
+	@echo "  ── Image management ──────────────────────────────────────────────"
+	@printf "  %-24s  %s\n" "make pull"          "Pull image host arch dari GHCR"
+	@printf "  %-24s  %s\n" "make pull-arm64"    "Pull image arm64 dari GHCR"
+	@printf "  %-24s  %s\n" "make pull-x86"      "Pull image x86 dari GHCR"
+	@printf "  %-24s  %s\n" "make pull-all"      "Pull semua arch dari GHCR"
+	@printf "  %-24s  %s\n" "make image"         "Build image lokal (--no-cache)"
+	@printf "  %-24s  %s\n" "make image-clean"   "Hapus containers + image host arch"
+	@printf "  %-24s  %s\n" "make image-clean-all" "Hapus semua containers + images"
+	@echo ""
 	@echo "  ── Options ───────────────────────────────────────────────────────"
 	@printf "  %-24s  %s\n" "KERNEL_VER=6.13.0"  "Test versi kernel lain"
 	@printf "  %-24s  %s\n" "BOOTSTRAP_TAG=..."   "Pin versi rootfs"
@@ -76,28 +86,47 @@ help:
 menu:
 	@bash $(SCRIPTS)/menu.sh
 
-# ── Build ─────────────────────────────────────────────────────────────────────
-image:
-	docker build -t kerndbox:$(PROFILE) .
+# ── Image management ──────────────────────────────────────────────────────────
+GHCR_IMAGE ?= ghcr.io/mixos-go/kerndbox
 
-build: image
+# Pull prebuilt image dari GHCR (default, cepat — tidak perlu build lokal)
+pull:
+	docker pull $(GHCR_IMAGE):$(PROFILE)
+
+pull-arm64:
+	docker pull $(GHCR_IMAGE):arm64
+
+pull-x86:
+	docker pull $(GHCR_IMAGE):x86
+
+pull-all:
+	docker pull $(GHCR_IMAGE):arm64
+	docker pull $(GHCR_IMAGE):x86
+
+# Build image lokal — hanya kalau Dockerfile/entrypoint.sh diubah dan
+# belum push ke GHCR. CI (.github/workflows/image.yml) yang normalnya handle.
+image:
+	docker build --no-cache -t kerndbox:$(PROFILE) .
+
+# ── Build ─────────────────────────────────────────────────────────────────────
+build:
 	$(RUN) dev-$(PROFILE) build
 
-rootfs: image
+rootfs:
 	$(RUN) rootfs-$(PROFILE)
 
-fetch: image
+fetch:
 	$(RUN) dev-$(PROFILE) fetch
 
-test: ptrace-fix
+test:
 	$(RUN) test-$(PROFILE)
 
-all: image
+all:
 	$(RUN) dev-$(PROFILE) all
 
 build-rootfs: build rootfs
 
-shell: image
+shell:
 	$(RUN) dev-$(PROFILE)
 
 # ── Patch shortcuts ───────────────────────────────────────────────────────────
@@ -148,6 +177,17 @@ ptrace-fix:
 
 clean:
 	rm -rf output/
+
+# Hapus containers yang masih jalan + pulled images (pakai setelah update image di GHCR)
+image-clean:
+	$(COMPOSE) down --remove-orphans 2>/dev/null || true
+	docker rmi $(GHCR_IMAGE):$(PROFILE) kerndbox:$(PROFILE) 2>/dev/null || true
+
+image-clean-all:
+	docker compose --profile arm64 down --remove-orphans 2>/dev/null || true
+	docker compose --profile x86   down --remove-orphans 2>/dev/null || true
+	docker rmi $(GHCR_IMAGE):arm64 $(GHCR_IMAGE):x86 \
+	           kerndbox:arm64 kerndbox:x86 2>/dev/null || true
 
 cache-clean:
 	docker volume rm kerndbox-cache 2>/dev/null || true
