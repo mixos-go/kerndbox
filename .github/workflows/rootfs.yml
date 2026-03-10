@@ -140,9 +140,6 @@ jobs:
           ARCH="${{ github.event.inputs.arch }}"
           KERNEL_TAG="${{ github.event.inputs.kernel_tag }}"
           BUILT_AT="$(date '+%Y-%m-%d %H:%M UTC')"
-          FULL_SHA="${{ github.sha }}"
-          SHORT_SHA="$FULL_SHA"
-          SHORT_SHA="$(echo "$SHORT_SHA" | cut -c1-7)"
           REPO="${{ github.repository }}"
           TAG="bootstrap-${VERSION}"
 
@@ -173,7 +170,6 @@ jobs:
           echo "| **Label**      | \`${LABEL}\` |"      >> "$NOTES"
           echo "| **Arch**       | \`${ARCH}\` |"       >> "$NOTES"
           echo "| **Kernel tag** | [\`${KERNEL_TAG}\`](https://github.com/${REPO}/releases/tag/${KERNEL_TAG}) |" >> "$NOTES"
-          echo "| **Commit** | [${SHORT_SHA}](https://github.com/${REPO}/commit/${FULL_SHA}) |" >> "$NOTES"
           echo "| **Built**      | \`${BUILT_AT}\` |"   >> "$NOTES"
           echo ""                                    >> "$NOTES"
           echo "---"                                 >> "$NOTES"
