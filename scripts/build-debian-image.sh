@@ -144,7 +144,8 @@ ZSHRC
     #   MODULES_TAR_X86_64=./output/modules-x86_64.tar.gz
     local arch_upper
     arch_upper="$(echo "$arch" | tr '[:lower:]' '[:upper:]' | tr - _)"
-    local modules_tar="${!MODULES_TAR_${arch_upper}:-${MODULES_TAR:-}}"
+    local var_name="MODULES_TAR_${arch_upper}"
+    local modules_tar="${!var_name:-${MODULES_TAR:-}}"
 
     if [ -n "$modules_tar" ] && [ -f "$modules_tar" ]; then
         local ko_count
