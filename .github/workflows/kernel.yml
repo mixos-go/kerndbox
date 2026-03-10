@@ -124,7 +124,9 @@ jobs:
           [ "$LABEL" = "latest" ] && RELEASE_FLAG="--latest"
 
           git push origin :refs/tags/${TAG} 2>/dev/null || true
-          gh release create "${TAG}"             --title "UML Kernel ${KVER} — ${VERSION} (${LABEL})"             --notes "UML kernel build for kerndbox/DevBox.
+          gh release create "${TAG}" \
+            --title "UML Kernel ${KVER} - ${VERSION}" \
+            --notes "UML kernel build for kerndbox/DevBox.
 
           **Kernel:** Linux ${KVER}
           **Version:** ${VERSION}
@@ -132,10 +134,10 @@ jobs:
           **Built:** ${BUILT_AT}
 
           Files:
-          - kernel-arm64          — UML kernel binary for ARM64
-          - kernel-x86_64         — UML kernel binary for x86_64
-          - modules-arm64.tar.gz  — Kernel modules ARM64
-          - modules-x86_64.tar.gz — Kernel modules x86_64
+          - kernel-arm64          - UML kernel binary for ARM64
+          - kernel-x86_64         - UML kernel binary for x86_64
+          - modules-arm64.tar.gz  - Kernel modules ARM64
+          - modules-x86_64.tar.gz - Kernel modules x86_64
 
           No KVM needed. No root needed. Runs entirely in userspace via ptrace."             $RELEASE_FLAG
 
