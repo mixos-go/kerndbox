@@ -37,7 +37,7 @@ SECTIONS {
 	}					:text
 
 	/* vDSO code */
-	.text		: { *(.text*) }			:text	= 0x90909090,2
+	.text		: { *(.text*) }			:text	= 0xd503201f,4
 	/* vdso-note.S */
 	.note.linux	: { *(.note.linux) }		:note
 

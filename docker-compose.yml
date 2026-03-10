@@ -3,103 +3,105 @@
 #   On arm64 host:  docker compose --profile arm64 run --rm {service}-arm64
 #   On x86_64 host: docker compose --profile x86   run --rm {service}-x86
 #
-# By default pulls prebuilt image from ghcr.io/mixos-go/kerndbox.
-# To build locally instead:
-#   docker compose --profile arm64 build build-arm64
-#   KERNDBOX_IMAGE=kerndbox:arm64 docker compose ...
+# Setup (sekali):
+#   make pull        — pull image dari ghcr.io
+#
+# Update image:
+#   make image-clean && make pull
 
-x-base-arm64: &base-arm64
-  image: ${KERNDBOX_IMAGE:-ghcr.io/mixos-go/kerndbox:arm64}
-  build:
-    context: .
-    dockerfile: Dockerfile
-    platforms:
-      - linux/arm64
-  platform: linux/arm64
-  privileged: true
-  security_opt:
-    - seccomp:unconfined
-  volumes:
-    - .:/workspace
-    - kerndbox-cache:/cache
-  working_dir: /workspace
+x-env: &env
   environment:
     - GITHUB_REPO=${GITHUB_REPO:-mixos-go/kerndbox}
     - GH_TOKEN=${GH_TOKEN:-}
     - BOOTSTRAP_TAG=${BOOTSTRAP_TAG:-}
 
-x-base-x86: &base-x86
-  image: ${KERNDBOX_IMAGE:-ghcr.io/mixos-go/kerndbox:x86}
-  build:
-    context: .
-    dockerfile: Dockerfile
-    platforms:
-      - linux/amd64
-  platform: linux/amd64
-  privileged: true
-  security_opt:
-    - seccomp:unconfined
+x-vols: &vols
   volumes:
     - .:/workspace
     - kerndbox-cache:/cache
   working_dir: /workspace
-  environment:
-    - GITHUB_REPO=${GITHUB_REPO:-mixos-go/kerndbox}
-    - GH_TOKEN=${GH_TOKEN:-}
-    - BOOTSTRAP_TAG=${BOOTSTRAP_TAG:-}
 
-x-shm: &shm
-  tmpfs:
-    - /dev/shm:exec,size=512m
+x-sec: &sec
+  privileged: true
+  security_opt:
+    - seccomp:unconfined
 
 services:
 
   # ── arm64 ─────────────────────────────────────────────────────────────────
   build-arm64:
-    <<: *base-arm64
+    <<: [*env, *vols, *sec]
+    image: ${KERNDBOX_IMAGE:-ghcr.io/mixos-go/kerndbox:arm64}
+    platform: linux/arm64
     profiles: [arm64]
+    pull_policy: never
     command: build
 
   rootfs-arm64:
-    <<: *base-arm64
+    <<: [*env, *vols, *sec]
+    image: ${KERNDBOX_IMAGE:-ghcr.io/mixos-go/kerndbox:arm64}
+    platform: linux/arm64
     profiles: [arm64]
+    pull_policy: never
     command: rootfs
 
   test-arm64:
-    <<: *base-arm64
-    <<: *shm
+    <<: [*env, *vols, *sec]
+    image: ${KERNDBOX_IMAGE:-ghcr.io/mixos-go/kerndbox:arm64}
+    platform: linux/arm64
     profiles: [arm64]
+    pull_policy: never
+    tmpfs:
+      - /dev/shm:exec,size=512m
     command: test
 
   dev-arm64:
-    <<: *base-arm64
-    <<: *shm
+    <<: [*env, *vols, *sec]
+    image: ${KERNDBOX_IMAGE:-ghcr.io/mixos-go/kerndbox:arm64}
+    platform: linux/arm64
     profiles: [arm64]
+    pull_policy: never
+    tmpfs:
+      - /dev/shm:exec,size=512m
     stdin_open: true
     tty: true
     command: bash
 
   # ── x86_64 ────────────────────────────────────────────────────────────────
   build-x86:
-    <<: *base-x86
+    <<: [*env, *vols, *sec]
+    image: ${KERNDBOX_IMAGE:-ghcr.io/mixos-go/kerndbox:x86}
+    platform: linux/amd64
     profiles: [x86]
+    pull_policy: never
     command: build
 
   rootfs-x86:
-    <<: *base-x86
+    <<: [*env, *vols, *sec]
+    image: ${KERNDBOX_IMAGE:-ghcr.io/mixos-go/kerndbox:x86}
+    platform: linux/amd64
     profiles: [x86]
+    pull_policy: never
     command: rootfs
 
   test-x86:
-    <<: *base-x86
-    <<: *shm
+    <<: [*env, *vols, *sec]
+    image: ${KERNDBOX_IMAGE:-ghcr.io/mixos-go/kerndbox:x86}
+    platform: linux/amd64
     profiles: [x86]
+    pull_policy: never
+    tmpfs:
+      - /dev/shm:exec,size=512m
     command: test
 
   dev-x86:
-    <<: *base-x86
-    <<: *shm
+    <<: [*env, *vols, *sec]
+    image: ${KERNDBOX_IMAGE:-ghcr.io/mixos-go/kerndbox:x86}
+    platform: linux/amd64
     profiles: [x86]
+    pull_policy: never
+    tmpfs:
+      - /dev/shm:exec,size=512m
     stdin_open: true
     tty: true
     command: bash
