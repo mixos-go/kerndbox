@@ -75,27 +75,44 @@ fi
 # ── Rust + bindgen ────────────────────────────────────────────────────────────
 # Debian bookworm rustc (1.63) too old — kernel 6.12 needs 1.78.0+
 # Debian bookworm bindgen (0.60.1) too old — kernel needs 0.65.1+
+
+# GitHub Actions runner has $HOME=/github/home, not /root.
+# Pin RUSTUP_HOME and CARGO_HOME explicitly so we always know where they are.
+export RUSTUP_HOME="/opt/rustup"
+export CARGO_HOME="/opt/cargo"
+export PATH="/opt/cargo/bin:$PATH"
+
 if ! command -v rustup >/dev/null 2>&1; then
     log "Installing rustup..."
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-        | sh -s -- -y --no-modify-path --default-toolchain none
+        | RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo \
+          sh -s -- -y --no-modify-path --default-toolchain none
 fi
-export PATH="/root/.cargo/bin:$PATH"
 
 # Read required Rust version from kernel source
-RUST_VER="$(scripts/min-tool-version.sh rustc 2>/dev/null | head -1 || echo '1.82.0')"
+RUST_VER="$("$SRC_DIR/scripts/min-tool-version.sh" rustc 2>/dev/null | head -1 || echo '1.82.0')"
 log "Installing Rust ${RUST_VER}..."
 rustup toolchain install "${RUST_VER}" --profile minimal
 rustup component add rust-src rustfmt clippy
 rustup override set "${RUST_VER}"
 
-# bindgen via cargo (apt version too old)
+# bindgen via cargo (apt version too old — needs 0.65.1+)
 if ! command -v bindgen >/dev/null 2>&1; then
     log "Installing bindgen..."
     cargo install --locked bindgen-cli
 fi
 log "Toolchain: gcc=$(gcc --version | head -1) | rustc=$(rustc --version) | bindgen=$(bindgen --version)"
 
+# ── Make variables ─────────────────────────────────────────────────────────────
+# Pass explicit paths so kernel Makefile finds our rustup-installed toolchain
+# regardless of PATH ordering inside make sub-processes.
+MAKE_VARS=(
+    ARCH=um
+    RUSTC="/opt/cargo/bin/rustc"
+    BINDGEN="/opt/cargo/bin/bindgen"
+    RUSTFMT="/opt/cargo/bin/rustfmt"
+    HOSTRUSTC="/opt/cargo/bin/rustc"
+)
 
 # ── Configure ────────────────────────────────────────────────────────────────
 # x86_64 UML uses upstream defconfig — no custom port needed.
@@ -105,8 +122,13 @@ rm -rf "$BUILD_DIR"; mkdir -p "$BUILD_DIR"
 
 J="-j$(nproc)"
 
+# Verify Rust toolchain usable before build
+log "Verifying Rust toolchain (make rustavailable)..."
+make -C "$SRC_DIR" O="$BUILD_DIR" "${MAKE_VARS[@]}" rustavailable \
+    || die "Rust toolchain not available — check rustc/bindgen versions"
+
 log "Configuring with defconfig..."
-make -C "$SRC_DIR" O="$BUILD_DIR" ARCH=um defconfig $J
+make -C "$SRC_DIR" O="$BUILD_DIR" "${MAKE_VARS[@]}" defconfig $J
 
 # Append essential UML features not in upstream x86_64 defconfig
 cat >> "$BUILD_DIR/.config" <<'KCONFIG'
@@ -188,13 +210,15 @@ CONFIG_NLS=y
 CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT=y
 CONFIG_FRAME_WARN=1024
 CONFIG_DEBUG_KERNEL=y
+# Rust support (requires rustc 1.78.0+ and bindgen 0.65.1+ installed via rustup)
+CONFIG_RUST=y
 KCONFIG
 
-make -C "$SRC_DIR" O="$BUILD_DIR" ARCH=um olddefconfig
+make -C "$SRC_DIR" O="$BUILD_DIR" "${MAKE_VARS[@]}" olddefconfig
 
 # ── Compile ──────────────────────────────────────────────────────────────────
 log "Compiling UML kernel (~5 min)..."
-make -C "$SRC_DIR" O="$BUILD_DIR" ARCH=um $J
+make -C "$SRC_DIR" O="$BUILD_DIR" "${MAKE_VARS[@]}" $J
 
 # ── Copy output ──────────────────────────────────────────────────────────────
 UML_BIN=$(find "$BUILD_DIR" -maxdepth 1 \( -name "linux" -o -name "vmlinux" \) 2>/dev/null | head -1)
@@ -212,7 +236,7 @@ MODULES_STAGING="$BUILD_DIR/modules-staging"
 rm -rf "$MODULES_STAGING"
 
 log "Installing kernel modules..."
-make -C "$SRC_DIR" O="$BUILD_DIR" ARCH=um \
+make -C "$SRC_DIR" O="$BUILD_DIR" "${MAKE_VARS[@]}" \
     INSTALL_MOD_PATH="$MODULES_STAGING" \
     INSTALL_MOD_STRIP=1 \
     modules_install
