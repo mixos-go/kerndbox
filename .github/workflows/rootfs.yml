@@ -129,38 +129,36 @@ jobs:
           merge-multiple: true
           path: ./output
 
-      - name: Publish rootfs
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create tag
         run: |
-          VERSION="${{ github.event.inputs.version }}"
-          LABEL="${{ github.event.inputs.label }}"
-          KERNEL_TAG="${{ github.event.inputs.kernel_tag }}"
-          BUILT_AT="$(date '+%Y-%m-%d %H:%M UTC')"
-          TAG="bootstrap-${VERSION}"
+          TAG="bootstrap-${{ github.event.inputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG" 2>/dev/null || true
+          git push origin "$TAG" 2>/dev/null || true
 
-          RELEASE_FLAG="--prerelease"
-          [ "$LABEL" = "latest" ] && RELEASE_FLAG="--latest"
+      - name: Publish rootfs
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: bootstrap-${{ github.event.inputs.version }}
+          name: Debian Rootfs - ${{ github.event.inputs.version }}
+          prerelease: ${{ github.event.inputs.label == 'experimental' }}
+          generate_release_notes: true
+          body: |
+            Debian bookworm rootfs for kerndbox/DevBox.
 
-          git push origin :refs/tags/${TAG} 2>/dev/null || true
-          gh release create "${TAG}" \
-            --title "Debian Rootfs ${VERSION}" \
-            --notes "Debian bookworm rootfs for kerndbox/DevBox.
+            **Version:** ${{ github.event.inputs.version }}
+            **Label:** ${{ github.event.inputs.label }}
+            **Kernel tag:** ${{ github.event.inputs.kernel_tag }}
+            **Arch:** ${{ github.event.inputs.arch }}
 
-          **Version:** ${VERSION}
-          **Label:** ${LABEL}
-          **Kernel tag:** ${KERNEL_TAG}
-          **Built:** ${BUILT_AT}
+            Files:
+            - debian-rootfs-aarch64.img — Debian rootfs for ARM64
+            - debian-rootfs-x86_64.img — Debian rootfs for x86_64
 
-          Files:
-          - debian-rootfs-aarch64.img - Debian rootfs for ARM64
-          - debian-rootfs-x86_64.img  - Debian rootfs for x86_64
-
-          Kernel modules baked in. modprobe works out of the box.
-          Boot with UML kernel from ${KERNEL_TAG}." \
-            $RELEASE_FLAG
-
-          for f in output/debian-rootfs-*.img; do
-            [ -f "$f" ] && gh release upload "${TAG}" "$f" --clobber
-          done
+            Kernel modules baked in. modprobe works out of the box.
+          files: |
+            output/debian-rootfs-aarch64.img
+            output/debian-rootfs-x86_64.img
+          token: ${{ secrets.GITHUB_TOKEN }}
 
