@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # build-arm64.sh — Build UML kernel for arm64 (DevBox)
 #
-# MUST run on a native aarch64 host (ubuntu-24.04-arm runner).
+# MUST run on a native aarch64 host (debian:bookworm container (ubuntu-24.04-arm runner)).
 # UML cannot be cross-compiled.
 #
 # Output: ./output/kernel-arm64

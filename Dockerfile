@@ -16,7 +16,7 @@
 #   scripts/fetch-rootfs.sh
 #   scripts/run-test.sh
 
-FROM ubuntu:24.04
+FROM debian:bookworm
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -48,7 +48,7 @@ RUN apt-get update -qq && \
       gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Install gh CLI if not available from apt (Ubuntu 24.04 has it in main)
+# Install gh CLI if not available from apt
 # Fallback: manual install
 RUN command -v gh >/dev/null 2>&1 || ( \
       curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \

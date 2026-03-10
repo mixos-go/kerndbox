@@ -232,6 +232,50 @@ CONFIG_IO_URING=y
 CONFIG_USERFAULTFD=y
 CONFIG_MEMBARRIER=y
 
+
+# ── Audit ─────────────────────────────────────────────────────
+# systemd requires audit subsystem
+CONFIG_AUDIT=y
+CONFIG_AUDITSYSCALL=y
+
+# ── Scheduler ────────────────────────────────────────────────
+CONFIG_SCHED_AUTOGROUP=y
+
+# ── Memory ───────────────────────────────────────────────────
+# KSM: kernel same-page merging — useful for phone (low RAM)
+CONFIG_KSM=y
+# Transparent hugepages — performance
+CONFIG_TRANSPARENT_HUGEPAGE=y
+CONFIG_TRANSPARENT_HUGEPAGE_MADVISE=y
+
+# ── Crypto: ARM64 CE (hardware-accelerated via ARMv8 crypto extensions) ───────
+# These use ARM64 NEON/CE instructions — faster than software fallback
+# NOTE: Only works on real arm64 hardware. UML may or may not forward CE insns.
+# If CE not available, kernel silently falls back to software implementation.
+CONFIG_CRYPTO_GHASH_ARM64_CE=y
+CONFIG_CRYPTO_SHA1_ARM64_CE=y
+CONFIG_CRYPTO_SHA2_ARM64_CE=y
+CONFIG_CRYPTO_SHA512_ARM64_CE=m
+CONFIG_CRYPTO_AES_ARM64_CE_BLK=y
+CONFIG_CRYPTO_AES_ARM64_CE_CCM=y
+CONFIG_CRYPTO_CHACHA20_NEON=m
+
+# ── Filesystem extras ────────────────────────────────────────
+# configfs — systemd/containers need this
+CONFIG_CONFIGFS_FS=y
+# autofs — systemd automount
+CONFIG_AUTOFS_FS=y
+# ubifs — optional, useful for compressed storage
+CONFIG_UBIFS_FS=m
+
+# ── Networking extras ────────────────────────────────────────
+# VLAN — container networking
+CONFIG_VLAN_8021Q=y
+CONFIG_VLAN_8021Q_GVRP=y
+CONFIG_BRIDGE_VLAN_FILTERING=y
+# IPVS — load balancer (useful for k3s/container orchestration future)
+CONFIG_IP_VS=m
+
 # ── Debug helpers ────────────────────────────────────────────
 CONFIG_MAGIC_SYSRQ=y
 CONFIG_IKCONFIG=y

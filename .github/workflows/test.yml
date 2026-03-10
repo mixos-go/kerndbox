@@ -1,0 +1,114 @@
+name: Test Suite
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_tag:
+        description: "Kernel release tag (e.g. kernel-v0.1.0)"
+        required: true
+        default: "kernel-v0.1.0"
+      bootstrap_tag:
+        description: "Rootfs release tag (e.g. bootstrap-v0.1.0)"
+        required: true
+        default: "bootstrap-v0.1.0"
+      arch:
+        description: "Architecture to test"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - arm64
+          - x86_64
+
+  workflow_run:
+    workflows: ["Build Rootfs"]
+    types:
+      - completed
+
+permissions: {}
+
+concurrency:
+  group: test-${{ github.event.inputs.kernel_tag }}-${{ github.event.inputs.bootstrap_tag }}
+  cancel-in-progress: false
+
+jobs:
+
+  setup:
+    name: Setup matrix
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Compute build matrix
+        id: matrix
+        run: |
+          case "${{ github.event.inputs.arch }}" in
+            arm64) echo 'matrix={"include":[{"arch":"aarch64","arch_out":"arm64","runner":"ubuntu-24.04-arm"}]}' >> $GITHUB_OUTPUT ;;
+            x86_64) echo 'matrix={"include":[{"arch":"x86_64","arch_out":"x86_64","runner":"ubuntu-24.04"}]}' >> $GITHUB_OUTPUT ;;
+            *) echo 'matrix={"include":[{"arch":"aarch64","arch_out":"arm64","runner":"ubuntu-24.04-arm"},{"arch":"x86_64","arch_out":"x86_64","runner":"ubuntu-24.04"}]}' >> $GITHUB_OUTPUT ;;
+          esac
+
+  test-suite:
+    name: Test (${{ matrix.arch_out }})
+    needs: setup
+    permissions:
+      contents: read
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: debian:bookworm
+    strategy:
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download kernel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p output
+          KERNEL_TAG="${{ github.event.inputs.kernel_tag }}"
+          ARCH_OUT="${{ matrix.arch_out }}"
+
+          echo "Downloading kernel-${ARCH_OUT} from ${KERNEL_TAG}..."
+          gh release download "${KERNEL_TAG}" \
+            --repo ${{ github.repository }} \
+            --pattern "kernel-${ARCH_OUT}" \
+            --dir ./output
+
+          chmod +x ./output/kernel-${ARCH_OUT}
+          echo "Kernel: $(du -sh output/kernel-${ARCH_OUT} | cut -f1)"
+
+      - name: Download rootfs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p output
+          BOOTSTRAP_TAG="${{ github.event.inputs.bootstrap_tag }}"
+          ARCH="${{ matrix.arch }}"
+
+          echo "Downloading debian-rootfs-${ARCH}.img from ${BOOTSTRAP_TAG}..."
+          gh release download "${BOOTSTRAP_TAG}" \
+            --repo ${{ github.repository }} \
+            --pattern "debian-rootfs-${ARCH}.img" \
+            --dir ./output
+
+          echo "Rootfs: $(du -sh output/debian-rootfs-${ARCH}.img | cut -f1)"
+
+      - name: Allow ptrace
+        run: sudo sysctl -w kernel.yama.ptrace_scope=0
+
+      - name: Boot test (${{ matrix.arch_out }})
+        run: |
+          chmod +x scripts/run-test.sh
+          bash scripts/run-test.sh ${{ matrix.arch }}
+
+      - name: Upload boot log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-log-${{ matrix.arch_out }}
+          path: output/boot-${{ matrix.arch_out }}.log
+          retention-days: 7

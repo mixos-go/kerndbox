@@ -58,6 +58,8 @@ jobs:
     permissions:
       contents: read
     runs-on: ${{ matrix.runner }}
+    container:
+      image: debian:bookworm
     strategy:
       matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
       fail-fast: false

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # build-x86.sh — Build UML kernel for x86_64 (DevBox)
 #
-# MUST run on a native x86_64 host (ubuntu-24.04 runner).
+# MUST run on a native x86_64 host (debian:bookworm container (ubuntu-24.04 runner)).
 # UML cannot be cross-compiled.
 #
 # Output: ./output/kernel-x86_64
@@ -135,7 +135,8 @@ CONFIG_JOLIET=y
 CONFIG_PROC_KCORE=y
 CONFIG_TMPFS=y
 CONFIG_NLS=y
-CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT=y
+# CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT is not set
+# CONFIG _DEBUG_INFO is not set
 CONFIG_FRAME_WARN=1024
 CONFIG_DEBUG_KERNEL=y
 KCONFIG
