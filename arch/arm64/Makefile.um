@@ -12,7 +12,8 @@ ELF_ARCH   := aarch64
 ELF_FORMAT := elf64-littleaarch64
 
 # ── Compiler flags ────────────────────────────────────────────────────────────
-KBUILD_CFLAGS += -fno-builtin -m64
+KBUILD_CFLAGS += -fno-builtin
+# Note: no -m64 here — that's x86-only. aarch64-linux-gnu-gcc is 64-bit by default.
 
 # Disable NEON/SVE/FP SIMD instructions for UML kernel objects.
 # UML processes run as regular Linux processes — the host kernel controls

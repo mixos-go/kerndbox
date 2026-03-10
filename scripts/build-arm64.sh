@@ -125,6 +125,14 @@ log "Toolchain: gcc=$(gcc --version | head -1) | rustc=$(rustc --version) | bind
 # regardless of PATH ordering inside make sub-processes.
 MAKE_VARS=(
     ARCH=um
+    SUBARCH=arm64
+    # rust/Makefile resolves: BINDGEN_TARGET := BINDGEN_TARGET_$(SRCARCH)
+    # With ARCH=um → SRCARCH=um → BINDGEN_TARGET_um undefined → empty string
+    # → bindgen gets --target '' → panics "unknown target triple 'unknown'"
+    # Fix: pass the host triple explicitly.
+    BINDGEN_TARGET=aarch64-linux-gnu
+    # Note: no CROSS_COMPILE — arm64 UML builds natively on aarch64 host.
+    # The host gcc IS aarch64-linux-gnu-gcc; no cross-compilation needed.
     RUSTC="/opt/cargo/bin/rustc"
     BINDGEN="/opt/cargo/bin/bindgen"
     RUSTFMT="/opt/cargo/bin/rustfmt"

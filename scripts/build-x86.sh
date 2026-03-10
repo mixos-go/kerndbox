@@ -108,6 +108,12 @@ log "Toolchain: gcc=$(gcc --version | head -1) | rustc=$(rustc --version) | bind
 # regardless of PATH ordering inside make sub-processes.
 MAKE_VARS=(
     ARCH=um
+    SUBARCH=x86_64
+    # rust/Makefile resolves: BINDGEN_TARGET := BINDGEN_TARGET_$(SRCARCH)
+    # With ARCH=um → SRCARCH=um → BINDGEN_TARGET_um undefined → empty string
+    # → bindgen gets --target '' → panics "unknown target triple 'unknown'"
+    # Fix: pass the host triple explicitly.
+    BINDGEN_TARGET=x86_64-linux-gnu
     RUSTC="/opt/cargo/bin/rustc"
     BINDGEN="/opt/cargo/bin/bindgen"
     RUSTFMT="/opt/cargo/bin/rustfmt"

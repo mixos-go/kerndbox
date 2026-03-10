@@ -50,6 +50,36 @@ chmod +x "$UML_BIN"
 log "Kernel size: $(du -sh "$UML_BIN" | cut -f1)"
 log "Rootfs size: $(du -sh "$ROOTFS"  | cut -f1)"
 
+# ── /dev/shm exec check ──────────────────────────────────────────────────────
+# UML mmaps executable pages in /dev/shm. Docker mounts it noexec by default.
+# Detect and remount exec before UML runs, otherwise:
+#   "/dev/shm must be not mounted noexec"
+SHM_NOEXEC=0
+if grep -qE '\s/dev/shm\s.*\bnoexec\b' /proc/mounts 2>/dev/null; then
+    SHM_NOEXEC=1
+fi
+
+if [[ $SHM_NOEXEC -eq 1 ]]; then
+    warn "/dev/shm is mounted noexec — UML will refuse to start"
+    log  "Remounting /dev/shm exec ..."
+    if mount -o remount,exec /dev/shm 2>/dev/null; then
+        log  "/dev/shm remounted exec ✓"
+    else
+        # Fallback: create a tmpfs we own in /tmp and point UML at it
+        warn "remount failed (no CAP_SYS_ADMIN?) — using TMPDIR fallback"
+        UML_TMPDIR="/tmp/uml-shm-$$"
+        mkdir -p "$UML_TMPDIR"
+        mount -t tmpfs -o exec,size=512M tmpfs "$UML_TMPDIR" 2>/dev/null || {
+            warn "tmpfs mount also failed — UML will likely fail with noexec error"
+            warn "Fix on host: docker run --tmpfs /dev/shm:exec,size=512m ..."
+        }
+        export TMPDIR="$UML_TMPDIR"
+        log  "TMPDIR=$TMPDIR"
+    fi
+else
+    log "/dev/shm exec ✓"
+fi
+
 # ── ptrace_scope check ───────────────────────────────────────────────────────
 PTRACE_SCOPE="$(cat /proc/sys/kernel/yama/ptrace_scope 2>/dev/null || echo 0)"
 if [[ "$PTRACE_SCOPE" -gt 0 ]]; then
@@ -94,6 +124,7 @@ else
     grep -q "VFS: Cannot open root" "$BOOT_LOG" && log "→ Root filesystem mount failed"
     grep -q "No init found"         "$BOOT_LOG" && log "→ init=/bin/sh not found in rootfs"
     grep -q "check_ptrace\|ptrace"  "$BOOT_LOG" && log "→ ptrace failure — host: sudo sysctl -w kernel.yama.ptrace_scope=0"
+    grep -q "noexec"                "$BOOT_LOG" && log "→ /dev/shm noexec — tambah --tmpfs /dev/shm:exec ke docker run, atau privileged=true"
     [[ "$EXIT_CODE" -eq 124 ]]                  && log "→ Timeout (90s)"
 fi
 
