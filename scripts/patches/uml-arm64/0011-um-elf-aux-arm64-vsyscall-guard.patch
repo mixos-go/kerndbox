@@ -1,0 +1,74 @@
+From: DevBox UML arm64 Port
+Subject: [PATCH] um: os-Linux: guard x86-only vsyscall in elf_aux.c
+
+arm64 Linux does not have a vsyscall page. Guard all AT_SYSINFO /
+AT_SYSINFO_EHDR / vsyscall_ehdr handling under CONFIG_X86. Also fix
+the fallback elf_aux_platform string: use "aarch64" instead of "i586"
+when running on non-x86.
+
+--- a/arch/um/os-Linux/elf_aux.c
++++ b/arch/um/os-Linux/elf_aux.c
+@@ -20,9 +20,12 @@
+ /* These are initialized very early in boot and never changed */
+ char * elf_aux_platform;
+ extern long elf_aux_hwcap;
++/* vsyscall is x86-only — arm64 Linux does not have a vsyscall page */
++#ifdef CONFIG_X86
+ unsigned long vsyscall_ehdr;
+ unsigned long vsyscall_end;
+ unsigned long __kernel_vsyscall;
++#endif
+ 
+ __init void scan_elf_aux( char **envp)
+ {
+@@ -33,18 +36,19 @@
+ 
+ 	for ( auxv = (elf_auxv_t *)envp; auxv->a_type != AT_NULL; auxv++) {
+ 		switch ( auxv->a_type ) {
++			/* AT_SYSINFO / AT_SYSINFO_EHDR: vsyscall page, x86-only */
++#ifdef CONFIG_X86
+ 			case AT_SYSINFO:
+ 				__kernel_vsyscall = auxv->a_un.a_val;
+-				/* See if the page is under TASK_SIZE */
+ 				if (__kernel_vsyscall < (unsigned long) envp)
+ 					__kernel_vsyscall = 0;
+ 				break;
+ 			case AT_SYSINFO_EHDR:
+ 				vsyscall_ehdr = auxv->a_un.a_val;
+-				/* See if the page is under TASK_SIZE */
+ 				if (vsyscall_ehdr < (unsigned long) envp)
+ 					vsyscall_ehdr = 0;
+ 				break;
++#endif
+ 			case AT_HWCAP:
+ 				elf_aux_hwcap = auxv->a_un.a_val;
+ 				break;
+@@ -61,15 +65,24 @@
+ 				break;
+ 		}
+ 	}
+-	if ( ! __kernel_vsyscall || ! vsyscall_ehdr ||
+-	     ! elf_aux_hwcap || ! elf_aux_platform ||
+-	     ! page_size || (vsyscall_ehdr % page_size) ) {
++	if ( ! elf_aux_hwcap || ! elf_aux_platform || ! page_size ) {
++		elf_aux_hwcap = 0;
++#ifdef CONFIG_X86
+ 		__kernel_vsyscall = 0;
+ 		vsyscall_ehdr = 0;
+-		elf_aux_hwcap = 0;
+ 		elf_aux_platform = "i586";
++#else
++		elf_aux_platform = "aarch64";
++#endif
++	}
++#ifdef CONFIG_X86
++	else if ( ! __kernel_vsyscall || ! vsyscall_ehdr ||
++	          (vsyscall_ehdr % page_size) ) {
++		__kernel_vsyscall = 0;
++		vsyscall_ehdr = 0;
+ 	}
+ 	else {
+ 		vsyscall_end = vsyscall_ehdr + page_size;
+ 	}
++#endif
+ }

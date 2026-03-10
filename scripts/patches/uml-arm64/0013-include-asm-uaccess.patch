@@ -1,0 +1,23 @@
+From: DevBox UML arm64 Port
+Subject: [PATCH] um: uaccess: fix __access_ok_vsyscall false positive on non-x86
+
+FIXADDR_USER_START and FIXADDR_USER_END are defined as 0 on arm64 UML
+(no vsyscall page). When START=0, the condition addr >= 0 is always
+true causing __access_ok_vsyscall to return true for any address.
+Add an early check: if FIXADDR_USER_START == 0 the macro returns false.
+
+--- a/arch/um/include/asm/uaccess.h
++++ b/arch/um/include/asm/uaccess.h
+@@ -14,8 +14,11 @@
+ 	(((unsigned long) (addr) < TASK_SIZE) && \
+ 	 (((unsigned long) (addr) + (size)) < TASK_SIZE))
+ 
++/* FIXADDR_USER_START/END are 0 on non-x86 (no vsyscall page).
++ * When both are 0, no address can be in [0, 0], so return false. */
+ #define __access_ok_vsyscall(addr, size) \
+-	  (((unsigned long) (addr) >= FIXADDR_USER_START) && \
++	  ((FIXADDR_USER_START != 0) && \
++	  ((unsigned long) (addr) >= FIXADDR_USER_START) && \
+ 	  ((unsigned long) (addr) + (size) <= FIXADDR_USER_END) && \
+ 	  ((unsigned long) (addr) + (size) >= (unsigned long)(addr)))
+ 

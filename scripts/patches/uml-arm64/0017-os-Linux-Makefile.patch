@@ -1,0 +1,20 @@
+From: DevBox UML arm64 Port
+Subject: [PATCH] um: os-Linux: Makefile: guard elf_aux.o in USER_OBJS
+
+elf_aux.o is only compiled when CONFIG_ARCH_REUSE_HOST_VSYSCALL_AREA=y.
+Hardcoding it in USER_OBJS causes make errors on arm64.
+
+--- a/arch/um/os-Linux/Makefile
++++ b/arch/um/os-Linux/Makefile
+@@ -14,8 +14,10 @@
+ 
+ obj-$(CONFIG_ARCH_REUSE_HOST_VSYSCALL_AREA) += elf_aux.o
+ 
+-USER_OBJS := $(user-objs-y) elf_aux.o execvp.o file.o helper.o irq.o \
++USER_OBJS := $(user-objs-y) execvp.o file.o helper.o irq.o \
+ 	main.o mem.o process.o registers.o sigio.o signal.o start_up.o time.o \
+ 	tty.o umid.o util.o
++# elf_aux.o is only compiled when CONFIG_ARCH_REUSE_HOST_VSYSCALL_AREA=y
++USER_OBJS += $(if $(CONFIG_ARCH_REUSE_HOST_VSYSCALL_AREA),elf_aux.o)
+ 
+ include $(srctree)/arch/um/scripts/Makefile.rules

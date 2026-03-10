@@ -15,8 +15,14 @@ obj-y = bugs.o \
         module.o
 
 obj-y  += os-Linux/
+obj-y  += vdso/
 
+# stub_segv is mapped into every child process - must not be PIC or profiled
 UNPROFILE_OBJS := stub_segv.o
+CFLAGS_stub_segv.o := $(CFLAGS_NO_HARDENING)
+
+# Files compiled with USER_CFLAGS (interact directly with host userspace ABI)
+USER_OBJS := bugs.o fault.o task_size.o
 
 # Generate user_constants.h from user-offsets.s (same mechanism as x86/um)
 $(obj)/user-offsets.s: c_flags = -Wp,-MD,$(depfile) $(USER_CFLAGS) \

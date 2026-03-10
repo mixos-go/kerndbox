@@ -1,0 +1,29 @@
+From: DevBox UML arm64 Port
+Subject: [PATCH] um: user_syms: fix memcpy/memmove/memset export guard
+
+Change #ifndef __x86_64__ to #ifdef CONFIG_X86_32.
+arm64 provides memcpy/memmove/memset from arch/arm64/lib/;
+exporting them again causes duplicate symbol errors.
+
+--- a/arch/um/os-Linux/user_syms.c
++++ b/arch/um/os-Linux/user_syms.c
+@@ -20,7 +20,9 @@
+ EXPORT_SYMBOL(strstr);
+ #endif
+ 
+-#ifndef __x86_64__
++/* memcpy/memmove/memset: export only for x86_32 UML.
++ * x86_64 and arm64 provide these via arch lib, no export needed here. */
++#ifdef CONFIG_X86_32
+ #undef memcpy
+ extern void *memcpy(void *, const void *, size_t);
+ EXPORT_SYMBOL(memcpy);
+@@ -29,7 +31,7 @@
+ #undef memset
+ extern void *memset(void *, int, size_t);
+ EXPORT_SYMBOL(memset);
+-#endif
++#endif /* CONFIG_X86_32 */
+ 
+ #ifdef CONFIG_ARCH_REUSE_HOST_VSYSCALL_AREA
+ /* needed for __access_ok() */

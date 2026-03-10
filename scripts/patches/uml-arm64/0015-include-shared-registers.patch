@@ -1,0 +1,24 @@
+From: DevBox UML arm64 Port
+Subject: [PATCH] um: registers: guard x86 FPU register declarations with CONFIG_X86
+
+All i387/fpx/fp register save/restore functions are x86-only.
+arm64 UML has no FPU register state in the kernel process context.
+
+--- a/arch/um/include/shared/registers.h
++++ b/arch/um/include/shared/registers.h
+@@ -8,6 +8,8 @@
+ 
+ #include <sysdep/ptrace.h>
+ 
++/* x86-only FPU register save/restore via ptrace i387 interface */
++#ifdef CONFIG_X86
+ extern int save_i387_registers(int pid, unsigned long *fp_regs);
+ extern int restore_i387_registers(int pid, unsigned long *fp_regs);
+ extern int save_fp_registers(int pid, unsigned long *fp_regs);
+@@ -18,5 +20,6 @@
+ extern void get_safe_registers(unsigned long *regs, unsigned long *fp_regs);
+ extern int get_fp_registers(int pid, unsigned long *regs);
+ extern int put_fp_registers(int pid, unsigned long *regs);
++#endif /* CONFIG_X86 */
+ 
+ #endif

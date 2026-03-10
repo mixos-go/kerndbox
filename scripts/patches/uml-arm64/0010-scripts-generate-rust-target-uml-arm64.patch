@@ -1,0 +1,47 @@
+From: DevBox UML arm64 Port
+Subject: [PATCH] scripts: generate_rust_target: add UML arm64 target
+
+arm64 bare-metal uses the builtin rustc aarch64-unknown-none target.
+However, UML arm64 runs as a Linux userspace process, so it needs a
+custom target.json similar to how x86_64 UML generates one.
+
+The UML arm64 target:
+  - llvm-target: aarch64-linux-gnu (Linux userspace, not bare-metal)
+  - features: -neon,-sve,-sve2,-fp-armv8 (UML kernel code must not use
+    SIMD; host kernel controls FP/SIMD context)
+  - data-layout: standard aarch64 LP64 layout
+  - relocation-model: pic (UML is a position-independent executable)
+
+Without this, CONFIG_RUST=y on UML arm64 panics during target.json
+generation with "arm64 uses the builtin rustc aarch64-unknown-none target".
+
+--- a/scripts/generate_rust_target.rs
++++ b/scripts/generate_rust_target.rs
+@@ -185,7 +185,26 @@
+ 
+     // `llvm-target`s are taken from `scripts/Makefile.clang`.
+     if cfg.has("ARM64") {
+-        panic!("arm64 uses the builtin rustc aarch64-unknown-none target");
++        if !cfg.has("UML") {
++            panic!("arm64 uses the builtin rustc aarch64-unknown-none target");
++        }
++        // UML arm64: runs as a Linux userspace process on an arm64 host.
++        // Cannot use aarch64-unknown-none (bare-metal); needs a Linux target.
++        ts.push("arch", "aarch64");
++        ts.push(
++            "data-layout",
++            "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128",
++        );
++        // Disable NEON/SVE: UML kernel code runs in a Linux process context.
++        // The host kernel owns FP/SIMD state; using NEON here would corrupt it.
++        let features = "-neon,-sve,-sve2,-fp-armv8".to_string();
++        ts.push("features", features);
++        ts.push("llvm-target", "aarch64-linux-gnu");
++        if cfg.rustc_version_atleast(1, 91, 0) {
++            ts.push("target-pointer-width", 64);
++        } else {
++            ts.push("target-pointer-width", "64");
++        }
+     } else if cfg.has("RISCV") {
+         if cfg.has("64BIT") {
+             panic!("64-bit RISC-V uses the builtin rustc riscv64-unknown-none-elf target");

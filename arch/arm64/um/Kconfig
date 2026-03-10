@@ -2,6 +2,8 @@
 
 config UML_ARM64
 	def_bool y
+	select GENERIC_TIME_VSYSCALL
+	select HAVE_ARCH_VDSO
 
 config 64BIT
 	def_bool y

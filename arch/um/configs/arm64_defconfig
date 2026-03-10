@@ -286,3 +286,5 @@ CONFIG_DEBUG_KERNEL=y
 # Requires: rustc 1.78.0+, bindgen 0.65.1+, rust-src component
 # Installed via rustup in build scripts (apt version too old)
 CONFIG_RUST=y
+
+CONFIG_VDSO=y

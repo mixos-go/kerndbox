@@ -1,0 +1,21 @@
+From: DevBox UML arm64 Port
+Subject: [PATCH] um: processor-generic: guard x86_capability in cpuinfo_um
+
+The x86_capability union in struct cpuinfo_um is only meaningful on x86.
+Guard it with CONFIG_X86 so arm64 UML does not carry the field.
+
+--- a/arch/um/include/asm/processor-generic.h
++++ b/arch/um/include/asm/processor-generic.h
+@@ -72,10 +72,12 @@
+ 	unsigned long loops_per_jiffy;
+ 	int ipi_pipe[2];
+ 	int cache_alignment;
++#ifdef CONFIG_X86
+ 	union {
+ 		__u32		x86_capability[NCAPINTS + NBUGINTS];
+ 		unsigned long	x86_capability_alignment;
+ 	};
++#endif
+ };
+ 
+ extern struct cpuinfo_um boot_cpu_data;

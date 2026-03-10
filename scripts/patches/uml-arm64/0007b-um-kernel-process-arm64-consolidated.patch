@@ -1,0 +1,53 @@
+From: DevBox UML arm64 Port
+Subject: [PATCH] um: kernel: process.c arm64 consolidated fixes
+
+Consolidate all arm64-related changes to arch/um/kernel/process.c:
+
+1. __get_wchan: guard JB_SP access with CONFIG_X86. On arm64, switch_buf
+   is a raw array so use array index access with JB_SP constant.
+
+2. user_context: mark static __maybe_unused to suppress
+   -Wmissing-prototypes and -Wunused-function warnings on arm64.
+
+3. elf_core_copy_task_fpregs: guard with CONFIG_X86. arm64 UML has no
+   FPU state in the kernel process context (NEON disabled via
+   -mgeneral-regs-only), return 0.
+
+--- a/arch/um/kernel/process.c
++++ b/arch/um/kernel/process.c
+@@ -209,7 +209,7 @@
+ 	/* Is in_interrupt() really needed? */
+ }
+ 
+-int user_context(unsigned long sp)
++static __maybe_unused int user_context(unsigned long sp)
+ {
+ 	unsigned long stack;
+ 
+@@ -270,7 +270,12 @@
+ 	if (stack_page == 0)
+ 		return 0;
+ 
++#ifdef CONFIG_X86
+ 	sp = p->thread.switch_buf->JB_SP;
++#else
++	/* arm64: switch_buf is a raw jmp_buf array; SP index from archsetjmp.h */
++	sp = ((unsigned long *)p->thread.switch_buf)[JB_SP];
++#endif
+ 	/*
+ 	 * Bail if the stack pointer is below the bottom of the kernel
+ 	 * stack for some reason
+@@ -294,8 +299,13 @@
+ 
+ int elf_core_copy_task_fpregs(struct task_struct *t, elf_fpregset_t *fpu)
+ {
++#ifdef CONFIG_X86
+ 	int cpu = current_thread_info()->cpu;
+ 
+ 	return save_i387_registers(userspace_pid[cpu], (unsigned long *) fpu) == 0;
++#else
++	/* UML on non-x86: no FPU state to save in the kernel process context */
++	return 0;
++#endif
+ }
+ 
