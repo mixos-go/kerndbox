@@ -104,7 +104,7 @@ jobs:
           echo "Rootfs: $(du -sh output/debian-rootfs-${ARCH}.img | cut -f1)"
 
       - name: Allow ptrace
-        run: sudo sysctl -w kernel.yama.ptrace_scope=0
+        run: sysctl -w kernel.yama.ptrace_scope=0
 
       - name: Boot test (${{ matrix.arch_out }})
         run: |
