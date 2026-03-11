@@ -12,7 +12,7 @@ vobjs := $(foreach F,$(vobjs-y),$(obj)/$F)
 targets += vdso.so vdso.so.dbg $(vobjs-y)
 
 VDSO_LDFLAGS = -fPIC -shared \
-               -Wl,--hash-style=sysv \
+               -Wl,--hash-style=both \
                -Wl,--build-id=sha1 \
                -Wl,-soname=linux-vdso.so.1 \
                -Wl,-z,max-page-size=4096 \
@@ -23,6 +23,7 @@ VDSO_LDFLAGS = -fPIC -shared \
 # linux/time.h etc. Use KBUILD_CFLAGS filter+append, NOT c_flags := override.
 CFL := -mcmodel=small -fPIC -O2 -fasynchronous-unwind-tables \
        -fno-stack-protector -fno-omit-frame-pointer \
+       -fno-plt \
        $(filter -g%, $(KBUILD_CFLAGS))
 
 $(vobjs): KBUILD_CFLAGS := $(filter-out -mcmodel=large -mcmodel=kernel, \

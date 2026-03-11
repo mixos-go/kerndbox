@@ -17,23 +17,25 @@ Guards ldt.h with CONFIG_X86. Calls arch_prctl_defaults() to disable PAC keys.
  #include <asm/unistd.h>
  #include <init.h>
  #include <os.h>
-@@ -27,6 +29,15 @@
+@@ -27,6 +29,17 @@
  #include <registers.h>
  #include <skas.h>
  #include "internal.h"
 +#ifdef __aarch64__
 +#include <sys/uio.h>
 +#include <elf.h>
++#include <stdbool.h>
 +#ifndef PTRACE_SET_SYSCALL
 +#define PTRACE_SET_SYSCALL 23
 +#endif
++extern void arch_prctl_defaults(void);
 +#endif
 +
 +int sysemu_supported = 0;
  
  static void ptrace_child(void)
  {
-@@ -184,6 +195,62 @@
+@@ -184,6 +197,63 @@
  	fatal("missing\n");
  }
  
@@ -90,13 +92,14 @@ Guards ldt.h with CONFIG_X86. Calls arch_prctl_defaults() to disable PAC keys.
 +	}
 +
 +	os_info("OK\n");
++	stop_ptraced_child(pid, 0);
 +}
 +#endif /* __aarch64__ */
 +
  static void __init check_ptrace(void)
  {
  	int pid, syscall, n, status;
-@@ -283,6 +350,10 @@
+@@ -283,6 +353,10 @@
  {
  	int pid;
  

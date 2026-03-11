@@ -1,13 +1,11 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * arch/arm64/um/vdso/vdso.lds
- * Linker script for UML arm64 vDSO shared object.
  *
- * Rules:
- * - Every section must be in PT_LOAD (:text) to be "in segment"
- * - .dynamic additionally goes in PT_DYNAMIC (:dynamic)
- * - .note additionally goes in PT_NOTE (:note)
- * - Do NOT use .lds.S — cpp_lds_S injects kernel headers that break ld
+ * NOTE: GNU ld always creates .got.plt for shared libs even with -fno-plt.
+ * /DISCARD/ causes "discarded output section" error. Fix: sink everything
+ * unwanted into .discard section mapped to :text — ld is happy, objcopy -S
+ * removes it when producing vdso.so from vdso.so.dbg.
  */
 
 OUTPUT_FORMAT("elf64-littleaarch64", "elf64-littleaarch64", "elf64-littleaarch64")
@@ -17,7 +15,6 @@ SECTIONS {
 	. = SIZEOF_HEADERS;
 
 	.hash		: { *(.hash) }			:text
-	.gnu.hash	: { *(.gnu.hash) }		:text
 	.dynsym		: { *(.dynsym) }		:text
 	.dynstr		: { *(.dynstr) }		:text
 	.gnu.version	: { *(.gnu.version) }		:text
@@ -27,35 +24,29 @@ SECTIONS {
 	.eh_frame_hdr	: { *(.eh_frame_hdr) }		:text
 	.eh_frame	: { KEEP (*(.eh_frame)) }	:text
 
-	/* Must be in :text (PT_LOAD) AND :dynamic (PT_DYNAMIC) */
 	.dynamic	: { *(.dynamic) }		:text :dynamic
 
-	/* Must be in :text (PT_LOAD) AND :note (PT_NOTE) */
 	.note		: { *(.note.*) }		:text :note
 	.note.linux	: { *(.note.linux) }		:text :note
 
 	.text		: { *(.text*) }			:text
 
-	.useless	: {
-		*(.discard)
-		*(.discard.*)
+	/* Sink — ld maps to :text so it doesn't complain, objcopy -S strips */
+	.discard	: {
+		*(.discard) *(.discard.*)
 		*(.note.GNU-stack)
 		*(.data .data.* .gnu.linkonce.d.*)
 		*(.bss)
-	}					:text
-
-	/DISCARD/ : {
-		*(.got.plt)
-		*(.got)
+		*(.got.plt) *(.got)
 		*(.plt*)
-		*(.rel*)
-	}
+		*(.rel*) *(.rela*)
+	}					:text
 }
 
 PHDRS {
-	text	PT_LOAD		FLAGS(5) FILEHDR PHDRS; /* PF_R|PF_X */
-	dynamic	PT_DYNAMIC	FLAGS(4);		 /* PF_R */
-	note	PT_NOTE		FLAGS(4);		 /* PF_R */
+	text	PT_LOAD		FLAGS(5) FILEHDR PHDRS;
+	dynamic	PT_DYNAMIC	FLAGS(4);
+	note	PT_NOTE		FLAGS(4);
 }
 
 VERSION {
