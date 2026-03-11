@@ -24,3 +24,22 @@ Subject: [PATCH 9/13] um/os-Linux/registers.c: arm64 compat for init_pid_registe
  
  	arch_init_registers(pid);
  	get_fp_registers(pid, exec_fp_regs);
+
+--- a/arch/um/kernel/process.c
++++ b/arch/um/kernel/process.c
+@@ -292,8 +292,16 @@ int copy_thread(struct task_struct *p, const struct kernel_clone_args *args)
+
+ int elf_core_copy_task_fpregs(struct task_struct *t, elf_fpregset_t *fpu)
+ {
++#ifdef CONFIG_X86
+ 	int cpu = current_thread_info()->cpu;
+
+ 	return save_i387_registers(userspace_pid[cpu], (unsigned long *) fpu) == 0;
++#else
++	/* arm64 UML: get FPSIMD state via PTRACE_GETREGSET/NT_PRFPREG */
++	int cpu = current_thread_info()->cpu;
++	int pid = userspace_pid[cpu];
++
++	return get_fp_registers(pid, (unsigned long *) fpu) == 0;
++#endif
+ }

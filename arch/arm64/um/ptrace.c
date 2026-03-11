@@ -66,7 +66,3 @@ long subarch_ptrace(struct task_struct *child, long request,
 	return -EIO;
 }
 
-/* arm64: nothing to do on context switch */
-void arch_switch_to(struct task_struct *to)
-{
-}

@@ -1,0 +1,17 @@
+From: DevBox UML arm64 Port
+Subject: [PATCH] arm64/um: fix arch_fixup for arm64 relative exception tables
+
+arm64 exception tables use RELATIVE offsets (ARCH_HAS_RELATIVE_EXTABLE):
+  struct exception_table_entry { int insn, fixup; short type, data; }
+  absolute_fixup = (unsigned long)&entry->fixup + entry->fixup
+
+The previous arch_fixup() in fault.c redefined exception_table_entry
+with 'unsigned long insn, fixup' (absolute) and used fixup->fixup
+directly. On arm64 this is a relative (signed int) offset, not an
+absolute address. The result: every copy_to/from_user fault redirected
+PC to a garbage address and caused kernel panic instead of returning
+-EFAULT.
+
+Fix: include <asm/extable.h> and <linux/extable.h> for the real
+arm64 struct definition and compute the absolute fixup address
+using pointer arithmetic.

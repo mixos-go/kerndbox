@@ -2,57 +2,34 @@
 /*
  * arch/arm64/um/stub_segv.c
  *
- * Stub code mapped into every UML child process at STUB_CODE.
- * stub_segv_handler is installed as the SIGSEGV handler; it saves
- * fault info into the stub data page so the UML kernel can read it.
+ * SIGSEGV stub handler mapped into every UML child at STUB_CODE.
+ *
+ * MUST use section ".__syscall_stub" — the UML linker scripts
+ * (uml.lds.S / dyn.lds.S) only collect .__syscall_stub* into .syscall_stub,
+ * which is what physmem maps into each child process.
+ *
+ * Fault info on arm64:
+ *   - fault_address: from siginfo->si_addr  (FAR_EL1 equivalent)
+ *   - error_code:    from siginfo->si_code  (SEGV_MAPERR/SEGV_ACCERR)
+ *   - trap_no:       0 (no x86-style trap number on arm64)
+ *
+ * The struct faultinfo lives at the base of the stub data page and is
+ * read by get_skas_faultinfo() in os-Linux/skas/process.c.
  */
 
-#include <linux/unistd.h>
-#include <sys/ucontext.h>
-#include <signal.h>
-#include <string.h>
 #include <sysdep/stub.h>
 #include <sysdep/faultinfo.h>
-#include <sysdep/mcontext.h>
-#include "stub-data.h"
+#include <sys/ucontext.h>
+#include <signal.h>
 
-/* Forward declarations to suppress -Wmissing-prototypes.
- * These are section-placed stubs, not called directly. */
-void __attribute__((section(".stub"))) stub_segv(void);
-void __attribute__((section(".stub"))) stub_end(void);
-
-
-/*
- * stub_segv — minimal SVC stub.
- * Triggers a trap so the UML kernel thread wakes up on a page fault.
- */
-void __attribute__ ((section (".stub"))) stub_segv(void)
-{
-	__asm__ __volatile__(
-		"mov x8, %0\n"
-		"svc #0\n"
-		:
-		: "i"(__NR_getpid)
-		: "x8", "x0"
-	);
-}
-
-/*
- * stub_segv_handler — SIGSEGV handler installed in the child process.
- * Runs at STUB_CODE; fills faultinfo on stub data page via GET_FAULTINFO_FROM_MC,
- * then calls trap_myself() to stop and let the UML kernel handle the fault.
- * Signature must match struct sigaction.sa_sigaction.
- */
-void __attribute__ ((section (".stub")))
+void __attribute__((__section__(".__syscall_stub")))
 stub_segv_handler(int sig, siginfo_t *info, void *p)
 {
 	struct faultinfo *f = get_stub_data();
-	ucontext_t *uc = p;
 
-	GET_FAULTINFO_FROM_MC(*f, &uc->uc_mcontext);
+	f->fault_address = (unsigned long)info->si_addr;
+	f->error_code    = info->si_code;   /* SEGV_MAPERR=1, SEGV_ACCERR=2 */
+	f->trap_no       = 0;
+
 	trap_myself();
-}
-
-void __attribute__ ((section (".stub"))) stub_end(void)
-{
 }

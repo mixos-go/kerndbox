@@ -66,6 +66,13 @@ RUN command -v gh >/dev/null 2>&1 || ( \
 #   -v kerndbox-cache:/cache
 RUN mkdir -p /cache /workspace/output
 
+# ── Install prebuilt arm64 UML host tools (for arm64 container only) ─────────
+# uml_mconsole, uml_switch, tunctl, port-helper — used to manage UML instances
+COPY prebuilt/tools/uml-utilities_arm64.deb /tmp/uml-utilities.deb
+RUN dpkg -i /tmp/uml-utilities.deb 2>/dev/null || \
+    dpkg -x /tmp/uml-utilities.deb / && \
+    rm /tmp/uml-utilities.deb
+
 # ── Symlink cache into /tmp so build scripts find tarballs ──────────────────
 # build-arm64.sh and build-x86.sh download to /tmp/linux-*.tar.xz
 RUN ln -s /cache /tmp/kernel-cache

@@ -3,11 +3,11 @@
  * arch/arm64/um/vdso/vdso.lds
  * Linker script for UML arm64 vDSO shared object.
  *
- * Every section needs an explicit :phdr tag — sections without one
- * inherit from the previous section's assignment, which causes
- * ".hash being made into a note" if .note appears first.
- *
- * Do NOT use .lds.S — cpp_lds_S injects kernel headers that confuse ld.
+ * Rules:
+ * - Every section must be in PT_LOAD (:text) to be "in segment"
+ * - .dynamic additionally goes in PT_DYNAMIC (:dynamic)
+ * - .note additionally goes in PT_NOTE (:note)
+ * - Do NOT use .lds.S — cpp_lds_S injects kernel headers that break ld
  */
 
 OUTPUT_FORMAT("elf64-littleaarch64", "elf64-littleaarch64", "elf64-littleaarch64")
@@ -15,6 +15,7 @@ OUTPUT_ARCH(aarch64)
 
 SECTIONS {
 	. = SIZEOF_HEADERS;
+
 	.hash		: { *(.hash) }			:text
 	.gnu.hash	: { *(.gnu.hash) }		:text
 	.dynsym		: { *(.dynsym) }		:text
@@ -26,10 +27,12 @@ SECTIONS {
 	.eh_frame_hdr	: { *(.eh_frame_hdr) }		:text
 	.eh_frame	: { KEEP (*(.eh_frame)) }	:text
 
-	.dynamic	: { *(.dynamic) }		:dynamic
+	/* Must be in :text (PT_LOAD) AND :dynamic (PT_DYNAMIC) */
+	.dynamic	: { *(.dynamic) }		:text :dynamic
 
-	.note		: { *(.note.*) }		:note
-	.note.linux	: { *(.note.linux) }		:note
+	/* Must be in :text (PT_LOAD) AND :note (PT_NOTE) */
+	.note		: { *(.note.*) }		:text :note
+	.note.linux	: { *(.note.linux) }		:text :note
 
 	.text		: { *(.text*) }			:text
 

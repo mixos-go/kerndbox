@@ -110,7 +110,18 @@ int put_fp_registers(int pid, unsigned long *regs)
 void get_safe_registers(unsigned long *regs, unsigned long *fp_regs)
 {
 	memset(regs, 0, MAX_REG_NR * sizeof(unsigned long));
-	/* fp_regs intentionally ignored — no NEON state in UML context */
+	/*
+	 * Zero FPSIMD state too. On arm64 essentially all C code uses NEON
+	 * (the compiler emits NEON instructions by default). If fp_regs is
+	 * left uninitialised and passed to put_fp_registers(), the guest
+	 * process starts with garbage FPSIMD state and crashes.
+	 *
+	 * After execve() the host kernel zeroes FPSIMD for the tracee, but
+	 * UML calls put_fp_registers() before PTRACE_SYSCALL resumes the
+	 * tracee — so we must supply a valid (zero) state here.
+	 */
+	if (fp_regs)
+		memset(fp_regs, 0, FP_SIZE * sizeof(unsigned long));
 }
 
 /* ── arch_init_registers ─────────────────────────────────────────────────── */

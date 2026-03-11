@@ -57,6 +57,14 @@ static inline void arch_flush_thread(struct arch_thread *thread)
 static inline void arch_copy_thread(struct arch_thread *from,
                                     struct arch_thread *to)
 {
+	/*
+	 * Inherit parent's TPIDR_EL0 (TLS register) on fork().
+	 * On arm64, TPIDR_EL0 is NOT part of user_pt_regs, so it is not
+	 * copied by the memcpy in copy_thread. We must propagate it here
+	 * so the child sees its parent's TLS value until explicitly changed
+	 * by clone(CLONE_SETTLS).
+	 */
+	to->tls = from->tls;
 }
 
 /* current_sp/current_bp: used by arch/um/include/asm/stacktrace.h

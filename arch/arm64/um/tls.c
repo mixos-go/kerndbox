@@ -40,3 +40,19 @@ void clear_flushed_tls(struct task_struct *task)
 {
 	task->thread.arch.tls = 0;
 }
+
+/*
+ * arch_switch_to — called on every context switch to a new task.
+ *
+ * On arm64, TPIDR_EL0 (the TLS register) is NOT part of user_pt_regs,
+ * so it is not saved/restored by the GP register save/restore in
+ * skas/process.c. We must push it explicitly whenever we switch to a
+ * different thread. This handles both the fork() inheritance case
+ * (arch_copy_thread copied parent's tls to child) and the general
+ * context switch case.
+ */
+void arch_switch_to(struct task_struct *to)
+{
+	if (to->mm)
+		os_set_tls(userspace_pid[task_cpu(to)], to->thread.arch.tls);
+}
