@@ -4,17 +4,16 @@ Subject: [PATCH 7/13] um/os-Linux/skas/process.c: arm64 compat + PTRACE_SYSCALL 
 arm64 lacks PTRACE_SYSEMU and PTRACE_GETREGS/SETREGS.
 
 Changes:
-1. PTRACE_GETREGS/SETREGS → save_registers/restore_registers via PTRACE_GETREGSET/NT_PRSTATUS
-2. PTRACE_SYSEMU → PTRACE_SYSCALL two-stop when sysemu_supported=0
+1. PTRACE_GETREGS/SETREGS -> save_registers/restore_registers via PTRACE_GETREGSET/NT_PRSTATUS
+2. PTRACE_SYSEMU -> PTRACE_SYSCALL two-stop when sysemu_supported=0
 3. Two-stop: at entry capture x8 BEFORE UPT_SYSCALL_NR=-1 clobbers it,
    save x0-x5 args, neutralize via PTRACE_SET_SYSCALL; at exit restore NR+args
 4. ptrace_reg_name / ptrace_dump_regs guarded for arm64
-5. arm64_neutralize_syscall uses PTRACE_SET_SYSCALL (changes only x8 in tracee,
-   no full register write needed at entry stop)
+5. arm64_neutralize_syscall uses PTRACE_SET_SYSCALL
 
 --- a/arch/um/os-Linux/skas/process.c
 +++ b/arch/um/os-Linux/skas/process.c
-@@ -16,6 +16,18 @@
+@@ -16,6 +16,16 @@
  #include <as-layout.h>
  #include <init.h>
  #include <kern_util.h>
@@ -22,10 +21,8 @@ Changes:
 +#ifdef __aarch64__
 +#include <sys/uio.h>
 +#include <asm/ptrace.h>
-+/* arm64 GP register save/restore via PTRACE_GETREGSET/SETREGSET (NT_PRSTATUS=1) */
 +int save_registers(int pid, struct uml_pt_regs *regs);
 +int restore_registers(int pid, struct uml_pt_regs *regs);
-+/* PTRACE_SET_SYSCALL: arm64-specific, changes only the in-flight syscall NR */
 +#ifndef PTRACE_SET_SYSCALL
 +#define PTRACE_SET_SYSCALL 23
 +#endif
@@ -33,7 +30,7 @@ Changes:
  #include <mem.h>
  #include <os.h>
  #include <ptrace_user.h>
-@@ -25,6 +37,9 @@
+@@ -25,12 +35,16 @@
  #include <linux/threads.h>
  #include <timetravel.h>
  #include "../internal.h"
@@ -43,7 +40,6 @@ Changes:
  
  int is_skas_winch(int pid, int fd, void *data)
  {
-@@ -33,6 +48,7 @@ int is_skas_winch(int pid, int fd, void *data)
  	return pid == getpgrp();
  }
  
@@ -51,7 +47,7 @@ Changes:
  static const char *ptrace_reg_name(int idx)
  {
  #define R(n) case HOST_##n: return #n
-@@ -79,12 +95,22 @@ static const char *ptrace_reg_name(int idx)
+@@ -78,12 +92,23 @@
  	}
  	return "";
  }
@@ -75,43 +71,23 @@ Changes:
  	if (ptrace(PTRACE_GETREGS, pid, 0, regs) < 0)
  		return -errno;
  
-@@ -93,6 +119,7 @@ static int ptrace_dump_regs(int pid)
- 		const char *regname = ptrace_reg_name(i);
+@@ -93,6 +118,7 @@
+ 
  		printk(UM_KERN_ERR "\t%s\t(%2d): %lx\n", regname, i, regs[i]);
  	}
 +#endif
  
  	return 0;
  }
-@@ -356,6 +383,38 @@ int start_userspace(unsigned long stub_stack)
+@@ -336,6 +362,22 @@
  	return err;
  }
  
 +#ifdef __aarch64__
-+/*
-+ * arm64 two-stop state — UML is strictly uniprocessor so static is fine.
-+ *
-+ * Problem: generic userspace() sets UPT_SYSCALL_NR(regs)=-1 AFTER
-+ * save_registers() but BEFORE our SIGTRAP+0x80 handler runs. So by the
-+ * time we reach the switch case, regs->gp[8] is already -1.
-+ *
-+ * Solution: arm64_pre_x8 captures gp[8] immediately after save_registers(),
-+ * before the generic -1 clobber. The entry handler uses this raw value.
-+ *
-+ * Also: the neutralized syscall (getpid) overwrites x0 with its return
-+ * value. We save x0..x5 at entry and restore at exit so handle_syscall()
-+ * sees correct arguments.
-+ */
 +static bool   arm64_at_entry;
 +static unsigned long arm64_saved_nr;
 +static unsigned long arm64_saved_args[6];
 +
-+/*
-+ * Neutralize the in-flight syscall by replacing NR with getpid.
-+ * Use PTRACE_SET_SYSCALL — arm64-specific ptrace request that changes
-+ * only x8 in the tracee without disturbing x0-x5 (args) or PC.
-+ * This avoids a full restore_registers() call at entry stop.
-+ */
 +static void arm64_neutralize_syscall(int pid)
 +{
 +	if (ptrace(PTRACE_SET_SYSCALL, pid, 0,
@@ -126,74 +102,65 @@ Changes:
  void userspace(struct uml_pt_regs *regs, unsigned long *aux_fp_regs)
  {
  	int err, status, op, pid = userspace_pid[0];
-@@ -376,9 +435,21 @@ void userspace(struct uml_pt_regs *regs, unsigned long *aux_fp_regs)
+@@ -368,7 +410,11 @@
  		 * fail.  In this case, there is nothing to do but
  		 * just kill the process.
  		 */
-+#ifdef __aarch64__
++		#ifdef __aarch64__
 +		if (restore_registers(pid, regs)) {
-+#else
++		#else
  		if (ptrace(PTRACE_SETREGS, pid, 0, regs->gp)) {
-+#endif
++		#endif
  			printk(UM_KERN_ERR "%s - ptrace set regs failed, errno = %d\n",
  			       __func__, errno);
  			fatal_sigsegv();
-@@ -391,10 +462,11 @@ void userspace(struct uml_pt_regs *regs, unsigned long *aux_fp_regs)
+@@ -380,10 +426,10 @@
  			fatal_sigsegv();
  		}
  
 -		if (singlestepping())
 -			op = PTRACE_SYSEMU_SINGLESTEP;
--		else
--			op = PTRACE_SYSEMU;
 +		if (sysemu_supported)
 +			op = singlestepping() ? PTRACE_SYSEMU_SINGLESTEP : PTRACE_SYSEMU;
-+		else
+ 		else
+-			op = PTRACE_SYSEMU;
 +			op = PTRACE_SYSCALL;
  
  		if (ptrace(op, pid, 0, 0)) {
  			printk(UM_KERN_ERR "%s - ptrace continue failed, op = %d, errno = %d\n",
-@@ -410,14 +482,33 @@ void userspace(struct uml_pt_regs *regs, unsigned long *aux_fp_regs)
+@@ -399,7 +445,11 @@
  		}
  
  		regs->is_user = 1;
-+#ifdef __aarch64__
++		#ifdef __aarch64__
 +		if (save_registers(pid, regs)) {
-+#else
++		#else
  		if (ptrace(PTRACE_GETREGS, pid, 0, regs->gp)) {
-+#endif
++		#endif
  			printk(UM_KERN_ERR "%s - PTRACE_GETREGS failed, errno = %d\n",
  			       __func__, errno);
  			fatal_sigsegv();
+@@ -411,6 +461,10 @@
+ 			fatal_sigsegv();
  		}
  
-+#ifdef __aarch64__
-+		/*
-+		 * Capture x8 NOW — before UPT_SYSCALL_NR=-1 below clobbers it.
-+		 * At syscall entry stop, x8 = real guest syscall NR.
-+		 * At syscall exit stop (neutralized getpid), x8 = __NR_getpid.
-+		 * Either way, arm64_pre_x8 is only used at entry (arm64_at_entry=false).
-+		 */
++		#ifdef __aarch64__
 +		unsigned long arm64_pre_x8 = regs->gp[8];
-+#endif
++		#endif
 +
  		UPT_SYSCALL_NR(regs) = -1; /* Assume: It's not a syscall */
  
  		if (WIFSTOPPED(status)) {
-@@ -460,7 +551,36 @@ void userspace(struct uml_pt_regs *regs, unsigned long *aux_fp_regs)
+@@ -442,7 +496,33 @@
+ 				else handle_segv(pid, regs, aux_fp_regs);
+ 				break;
  			case SIGTRAP + 0x80:
 +#ifdef __aarch64__
 +				if (sysemu_supported) {
 +					handle_trap(pid, regs);
 +				} else if (!arm64_at_entry) {
-+					/*
-+					 * SYSCALL ENTRY STOP
-+					 * Save real NR from arm64_pre_x8 (captured
-+					 * before generic code set gp[8]=-1).
-+					 * Save x0..x5 — getpid will overwrite x0.
-+					 */
 +					arm64_at_entry = true;
-+					arm64_saved_nr     = arm64_pre_x8;
++					arm64_saved_nr      = arm64_pre_x8;
 +					arm64_saved_args[0] = regs->gp[0];
 +					arm64_saved_args[1] = regs->gp[1];
 +					arm64_saved_args[2] = regs->gp[2];
@@ -202,10 +169,6 @@ Changes:
 +					arm64_saved_args[5] = regs->gp[5];
 +					arm64_neutralize_syscall(pid);
 +				} else {
-+					/*
-+					 * SYSCALL EXIT STOP (after neutralized getpid)
-+					 * Restore real NR and args before handle_trap().
-+					 */
 +					arm64_at_entry = false;
 +					UPT_SYSCALL_NR(regs) = arm64_saved_nr;
 +					regs->gp[0] = arm64_saved_args[0];
@@ -221,3 +184,4 @@ Changes:
 +#endif
  				break;
  			case SIGTRAP:
+ 				relay_signal(SIGTRAP, (struct siginfo *)&si, regs);

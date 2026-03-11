@@ -1,16 +1,9 @@
 From: DevBox UML arm64 Port
 Subject: [PATCH 8/13] um/os-Linux/start_up.c: arm64 compat for check_ptrace + non-fatal sysemu
 
-1. check_ptrace: arm64 cannot use PTRACE_PEEKUSER/POKEUSER for GP registers.
-   Use PTRACE_GETREGSET(NT_PRSTATUS) to read syscall NR, and PTRACE_SET_SYSCALL
-   to modify it. Also fix ptrace_child: ptrace_child must exit(0) when the
-   parent successfully modified the syscall (parent changes getpid->getppid,
-   child sees getppid return ppid -> ret=0 -> exit(0)).
-
-2. check_sysemu: made non-fatal on arm64. Sets sysemu_supported=0 so
-   userspace() falls back to PTRACE_SYSCALL two-stop mode.
-
-3. ldt.h include: guarded with CONFIG_X86.
+arm64 cannot use PTRACE_PEEKUSER/POKEUSER. Adds arm64_check_ptrace() using
+PTRACE_GETREGSET + PTRACE_SET_SYSCALL. Makes check_sysemu() non-fatal.
+Guards ldt.h with CONFIG_X86. Calls arch_prctl_defaults() to disable PAC keys.
 
 --- a/arch/um/os-Linux/start_up.c
 +++ b/arch/um/os-Linux/start_up.c
@@ -24,14 +17,13 @@ Subject: [PATCH 8/13] um/os-Linux/start_up.c: arm64 compat for check_ptrace + no
  #include <asm/unistd.h>
  #include <init.h>
  #include <os.h>
-@@ -27,6 +29,14 @@
+@@ -27,6 +29,15 @@
  #include <registers.h>
  #include <skas.h>
  #include "internal.h"
 +#ifdef __aarch64__
 +#include <sys/uio.h>
-+#include <elf.h>   /* NT_PRSTATUS */
-+/* PTRACE_SET_SYSCALL: arm64-specific ptrace op to change in-flight syscall NR */
++#include <elf.h>
 +#ifndef PTRACE_SET_SYSCALL
 +#define PTRACE_SET_SYSCALL 23
 +#endif
@@ -41,47 +33,16 @@ Subject: [PATCH 8/13] um/os-Linux/start_up.c: arm64 compat for check_ptrace + no
  
  static void ptrace_child(void)
  {
-@@ -131,8 +141,6 @@ static void stop_ptraced_child(int pid, int exitcode)
- 	}
+@@ -184,6 +195,62 @@
+ 	fatal("missing\n");
  }
  
--int sysemu_supported = 0;
--
- static void __init check_sysemu(void)
- {
- 	int pid, n, status, count=0;
-@@ -176,14 +184,82 @@ static void __init check_sysemu(void)
- 	stop_ptraced_child(pid, 0);
- 
- 	os_info("OK\n");
-+	sysemu_supported = 1;
- 	return;
- 
- fail:
- 	stop_ptraced_child(pid, 1);
--	fatal("missing\n");
-+	os_info("not available - using PTRACE_SYSCALL fallback\n");
-+	sysemu_supported = 0;
-+}
 +
 +#ifdef __aarch64__
-+/*
-+ * arm64_check_ptrace - verify PTRACE_SYSCALL + PTRACE_SET_SYSCALL work.
-+ *
-+ * arm64 kernel does not support PTRACE_PEEKUSER/POKEUSER for 64-bit GP regs
-+ * (they return EIO). Use PTRACE_GETREGSET(NT_PRSTATUS) to read x8 (syscall NR)
-+ * and PTRACE_SET_SYSCALL to atomically change the in-flight syscall number.
-+ *
-+ * ptrace_child does: getpid(); exit(ret)
-+ *   where ret=0 if parent modified NR (child gets ppid != pid -> 0),
-+ *   ret=1 if unmodified (child gets pid == pid -> 1).
-+ * We stop at the getpid syscall entry, change NR to getppid, let it run.
-+ * stop_ptraced_child(pid, 0) expects child to exit(0) on success.
-+ */
 +static void __init arm64_check_ptrace(void)
 +{
 +	int pid, n, status;
-+	unsigned long long regs[34];   /* struct user_pt_regs: 34 x u64 */
++	unsigned long long regs[34];
 +	struct iovec iov;
 +	unsigned long nr;
 +	bool found = false;
@@ -102,7 +63,6 @@ Subject: [PATCH 8/13] um/os-Linux/start_up.c: arm64 compat for check_ptrace + no
 +			fatal_perror("arm64_check_ptrace: waitpid failed");
 +
 +		if (!WIFSTOPPED(status)) {
-+			/* Child exited — either we succeeded or something went wrong */
 +			if (found && WIFEXITED(status) && WEXITSTATUS(status) == 0)
 +				break;
 +			fatal("arm64_check_ptrace: unexpected child exit, status=0x%x\n",
@@ -110,20 +70,18 @@ Subject: [PATCH 8/13] um/os-Linux/start_up.c: arm64 compat for check_ptrace + no
 +		}
 +
 +		if (WSTOPSIG(status) != (SIGTRAP | 0x80))
-+			continue;  /* non-syscall stop, keep going */
++			continue;
 +
 +		if (found)
-+			continue;  /* syscall exit stop after modification */
++			continue;
 +
-+		/* Syscall entry stop: read x8 via GETREGSET */
 +		iov.iov_base = regs;
 +		iov.iov_len  = sizeof(regs);
 +		if (ptrace(PTRACE_GETREGSET, pid, (void *)(long)NT_PRSTATUS, &iov) < 0)
 +			fatal_perror("arm64_check_ptrace: PTRACE_GETREGSET failed");
 +
-+		nr = regs[8];  /* x8 = syscall NR */
++		nr = regs[8];
 +		if (nr == __NR_getpid) {
-+			/* Change NR to getppid via PTRACE_SET_SYSCALL */
 +			if (ptrace(PTRACE_SET_SYSCALL, pid, 0,
 +				   (void *)(unsigned long)__NR_getppid) < 0)
 +				fatal_perror("arm64_check_ptrace: PTRACE_SET_SYSCALL failed");
@@ -132,37 +90,20 @@ Subject: [PATCH 8/13] um/os-Linux/start_up.c: arm64 compat for check_ptrace + no
 +	}
 +
 +	os_info("OK\n");
-+	/* check_sysemu not applicable on arm64 — sysemu_supported stays 0 */
- }
++}
 +#endif /* __aarch64__ */
- 
++
  static void __init check_ptrace(void)
  {
-@@ -192,6 +268,12 @@ static void __init check_ptrace(void)
- 
- 	os_info("Checking that ptrace can change system call numbers...");
- 	pid = start_ptraced_child();
-+
-+#ifdef __aarch64__
-+	/* arm64: PTRACE_PEEKUSER/POKEUSER don't work for GP regs; use our impl */
-+	stop_ptraced_child(pid, 1);  /* kill the generic child */
-+	arm64_check_ptrace();
-+	return;
-+#endif
- 
- 	if ((ptrace(PTRACE_SETOPTIONS, pid, 0,
- 		   (void *) PTRACE_O_TRACESYSGOOD) < 0))
-
---- a/arch/um/os-Linux/start_up.c  (add PAC disable before checks)
-+++ b/arch/um/os-Linux/start_up.c
-@@ -282,6 +282,11 @@ void __init os_early_checks(void)
+ 	int pid, syscall, n, status;
+@@ -283,6 +350,10 @@
  {
  	int pid;
-
+ 
 +#ifdef __aarch64__
-+	/* Disable PAC keys so ptrace register reads are not corrupted */
 +	arch_prctl_defaults();
 +#endif
 +
  	/* Print out the core dump limits early */
  	check_coredump_limit();
+ 

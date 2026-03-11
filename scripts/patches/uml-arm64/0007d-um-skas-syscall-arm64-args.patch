@@ -1,47 +1,35 @@
 From: DevBox UML arm64 Port
 Subject: [PATCH] um/kernel/skas/syscall.c: save/restore x0-x5 around SET_SYSCALL_RETURN on arm64
 
-On arm64, x0 is both the first syscall argument (UPT_SYSCALL_ARG1) and the
-syscall return value register (UPT_SYSCALL_RET). handle_syscall() calls
-PT_REGS_SET_SYSCALL_RETURN(regs, -ENOSYS) before EXECUTE_SYSCALL(), which
-sets gp[0] = -ENOSYS. Since UPT_SYSCALL_ARG1 reads gp[0], all syscalls
-receive -ENOSYS as arg1 and immediately fail.
-
-On x86 there is no conflict: arg1 is DI and the return value is AX.
-
-Fix: on arm64, save gp[0..5] immediately after entry, and restore them
-just before EXECUTE_SYSCALL so the -ENOSYS default does not corrupt arg1..6.
+On arm64, x0 is both arg1 and retval. PT_REGS_SET_SYSCALL_RETURN(-ENOSYS)
+clobbers x0 before EXECUTE_SYSCALL reads UPT_SYSCALL_ARG1. Save and restore.
 
 --- a/arch/um/kernel/skas/syscall.c
 +++ b/arch/um/kernel/skas/syscall.c
-@@ -17,13 +17,27 @@ void handle_syscall(struct uml_pt_regs *r)
- {
- 	struct pt_regs *regs = container_of(r, struct pt_regs, regs);
- 	int syscall;
-+#ifdef __aarch64__
-+	/*
-+	 * arm64: x0 = arg1 = return value.  Save original args before
-+	 * PT_REGS_SET_SYSCALL_RETURN(-ENOSYS) clobbers gp[0] (= arg1).
-+	 */
-+	unsigned long arm64_args[6] = {
-+		r->gp[0], r->gp[1], r->gp[2],
-+		r->gp[3], r->gp[4], r->gp[5],
-+	};
-+#endif
+@@ -21,7 +21,26 @@
  
  	/* Initialize the syscall number and default return value. */
  	UPT_SYSCALL_NR(r) = PT_SYSCALL_NR(r->gp);
- 	PT_REGS_SET_SYSCALL_RETURN(regs, -ENOSYS);
- 
 +#ifdef __aarch64__
-+	/* Restore args: gp[0] was just overwritten with -ENOSYS. */
-+	r->gp[0] = arm64_args[0];
-+	r->gp[1] = arm64_args[1];
-+	r->gp[2] = arm64_args[2];
-+	r->gp[3] = arm64_args[3];
-+	r->gp[4] = arm64_args[4];
-+	r->gp[5] = arm64_args[5];
++	/*
++	 * On arm64 x0 is both the first syscall argument and the return value
++	 * register. PT_REGS_SET_SYSCALL_RETURN writes -ENOSYS into gp[0] which
++	 * would clobber arg1. Save args before and restore after.
++	 */
++	unsigned long __saved_args[6] = {
++		r->gp[0], r->gp[1], r->gp[2],
++		r->gp[3], r->gp[4], r->gp[5],
++	};
+ 	PT_REGS_SET_SYSCALL_RETURN(regs, -ENOSYS);
++	r->gp[0] = __saved_args[0];
++	r->gp[1] = __saved_args[1];
++	r->gp[2] = __saved_args[2];
++	r->gp[3] = __saved_args[3];
++	r->gp[4] = __saved_args[4];
++	r->gp[5] = __saved_args[5];
++#else
++	PT_REGS_SET_SYSCALL_RETURN(regs, -ENOSYS);
 +#endif
-+
+ 
  	if (syscall_trace_enter(regs))
  		goto out;
