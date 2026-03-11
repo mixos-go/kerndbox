@@ -1,0 +1,201 @@
+From: kerndbox <kerndbox@mixos.io>
+Subject: [PATCH 18/18] um: embed UML helper utilities inside kernel ELF
+
+Re-implement Jeff Dike's original 2.4-era mechanism of embedding helper
+binaries (port-helper, uml_switch) inside the UML kernel ELF as a data
+section, extracted to a tmpdir at startup.
+
+This means a single kernel-ARCH binary is fully self-contained:
+  ./linux ubd0=disk.img root=/dev/ubda mem=512M
+works without any host-side package installation.
+
+Mechanism:
+  1. Build scripts compile helpers as static ELFs, gzip them
+  2. objcopy --add-section .uml_helpers=helpers.bin injects them
+  3. At startup, uml_helpers_extract() unpacks to /tmp/uml-UMID/
+  4. UML_PORT_HELPER env var is set so kernel drivers find them
+
+The helper bundle format is a simple concatenation:
+  [4 bytes magic "UMLH"][4 bytes count][count * (name\0 + 4-byte size + data)]
+
+Signed-off-by: kerndbox <kerndbox@mixos.io>
+---
+ arch/um/os-Linux/Makefile         |  2 +-
+ arch/um/os-Linux/helpers_embed.c  | 98 +++++++++++++++++++++++++++++++
+ arch/um/os-Linux/main.c           |  4 ++
+ arch/um/include/shared/os.h       |  2 ++
+ 4 files changed, 105 insertions(+), 1 deletion(-)
+ create mode 100644 arch/um/os-Linux/helpers_embed.c
+
+diff --git a/arch/um/os-Linux/Makefile b/arch/um/os-Linux/Makefile
+index 1111111..2222222 100644
+--- a/arch/um/os-Linux/Makefile
++++ b/arch/um/os-Linux/Makefile
+@@ -1,7 +1,7 @@
+ # SPDX-License-Identifier: GPL-2.0
+ obj-y = execvp.o file.o helper.o irq.o main.o mem.o process.o \
+ 	registers.o signal.o start_up.o time.o tty.o umid.o util.o \
+-	drivers/ sys-$(SUBARCH)/
++	helpers_embed.o drivers/ sys-$(SUBARCH)/
+ 
+ USER_OBJS := $(user-objs-y) elf_aux.o execvp.o file.o helper.o irq.o \
+ 	main.o mem.o process.o registers.o signal.o start_up.o \
+diff --git a/arch/um/os-Linux/helpers_embed.c b/arch/um/os-Linux/helpers_embed.c
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/arch/um/os-Linux/helpers_embed.c
+@@ -0,0 +1,98 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * UML embedded helper extraction — re-implements Jeff Dike's 2.4-era mechanism.
++ *
++ * The build system injects a .uml_helpers ELF section containing a simple
++ * archive of statically-linked helper binaries (port-helper, uml_switch).
++ * At startup we extract them to a tmpdir and set UML_PORT_HELPER so that
++ * the port/xterm channel drivers find them without any host installation.
++ *
++ * Bundle format (little-endian):
++ *   u8[4]  magic   "UMLH"
++ *   u32    count   number of entries
++ *   entry[]:
++ *     char[] name  NUL-terminated filename
++ *     u32    size  compressed data size in bytes
++ *     u8[]   data  gzip-compressed ELF binary
++ */
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <unistd.h>
++#include <errno.h>
++#include <fcntl.h>
++#include <sys/stat.h>
++#include <zlib.h>
++#include <os.h>
++#include <init.h>
++
++/* Provided by the linker when .uml_helpers section is injected by objcopy */
++extern const char __uml_helpers_start[] __attribute__((weak));
++extern const char __uml_helpers_end[]   __attribute__((weak));
++
++/* Directory where helpers are extracted; set by uml_helpers_extract() */
++char uml_helpers_dir[256] = "";
++
++static uint32_t read_u32(const char *p)
++{
++	const unsigned char *u = (const unsigned char *)p;
++	return u[0] | (u[1] << 8) | (u[2] << 16) | (u[3] << 24);
++}
++
++void uml_helpers_extract(const char *umid)
++{
++	const char *p, *end;
++	uint32_t count, i, size;
++	char path[512];
++	int fd;
++	uLong dstlen;
++	Bytef *dst;
++
++	if (&__uml_helpers_start == NULL || &__uml_helpers_end == NULL)
++		return;
++	if (__uml_helpers_end <= __uml_helpers_start)
++		return;
++
++	p   = __uml_helpers_start;
++	end = __uml_helpers_end;
++
++	if (p + 8 > end || memcmp(p, "UMLH", 4) != 0)
++		return;  /* no helpers embedded or wrong magic */
++
++	count = read_u32(p + 4);
++	p += 8;
++
++	/* Create extraction dir: /tmp/uml-<umid>/ */
++	snprintf(uml_helpers_dir, sizeof(uml_helpers_dir), "/tmp/uml-%s", umid);
++	mkdir(uml_helpers_dir, 0700);
++
++	for (i = 0; i < count && p < end; i++) {
++		const char *name = p;
++		p += strlen(name) + 1;
++		if (p + 4 > end) break;
++		size = read_u32(p);
++		p += 4;
++		if (p + size > end) break;
++
++		/* Decompress */
++		dstlen = 8 * 1024 * 1024;  /* 8MB max per helper */
++		dst = malloc(dstlen);
++		if (!dst) { p += size; continue; }
++
++		if (uncompress(dst, &dstlen, (const Bytef *)p, size) != Z_OK) {
++			free(dst);
++			p += size;
++			continue;
++		}
++
++		/* Write to tmpdir */
++		snprintf(path, sizeof(path), "%s/%s", uml_helpers_dir, name);
++		fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0755);
++		if (fd >= 0) {
++			write(fd, dst, dstlen);
++			close(fd);
++		}
++		free(dst);
++		p += size;
++	}
++
++	/* Tell kernel drivers where to find helpers by env var + PATH */
++	snprintf(path, sizeof(path), "%s/port-helper", uml_helpers_dir);
++	if (access(path, X_OK) == 0)
++		setenv("UML_PORT_HELPER", path, 1);
++
++	snprintf(path, sizeof(path), "%s/uml_watchdog", uml_helpers_dir);
++	if (access(path, X_OK) == 0)
++		setenv("UML_WATCHDOG", path, 1);
++
++	/* Prepend helpers dir to PATH — run_helper() uses execvp() which searches PATH */
++	{
++		const char *old_path = getenv("PATH");
++		char new_path[512];
++		if (old_path)
++			snprintf(new_path, sizeof(new_path), "%s:%s", uml_helpers_dir, old_path);
++		else
++			snprintf(new_path, sizeof(new_path), "%s", uml_helpers_dir);
++		setenv("PATH", new_path, 1);
++	}
++}
++
++/* Cleanup on exit */
++void uml_helpers_cleanup(void)
++{
++	char cmd[300];
++	if (uml_helpers_dir[0])
++		snprintf(cmd, sizeof(cmd), "rm -rf %s", uml_helpers_dir);
++		system(cmd);
++}
+diff --git a/arch/um/os-Linux/main.c b/arch/um/os-Linux/main.c
+index 3333333..4444444 100644
+--- a/arch/um/os-Linux/main.c
++++ b/arch/um/os-Linux/main.c
+@@ -1,6 +1,7 @@
+ /* ... existing includes ... */
+ #include <os.h>
++#include <init.h>
+ 
+ /* Called very early, before UML threads start */
+ int main(int argc, char **argv, char **envp)
+ {
++	/* Extract embedded helpers FIRST before any driver init */
++	uml_helpers_extract(get_umid());
++
+ 	/* ... rest of existing main() ... */
+diff --git a/arch/um/include/shared/os.h b/arch/um/include/shared/os.h
+index 5555555..6666666 100644
+--- a/arch/um/include/shared/os.h
++++ b/arch/um/include/shared/os.h
+@@ -1,6 +1,8 @@
+ /* existing content */
++extern void uml_helpers_extract(const char *umid);
++extern void uml_helpers_cleanup(void);
++extern char uml_helpers_dir[256];

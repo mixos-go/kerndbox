@@ -12,7 +12,7 @@ vobjs := $(foreach F,$(vobjs-y),$(obj)/$F)
 targets += vdso.so vdso.so.dbg $(vobjs-y)
 
 VDSO_LDFLAGS = -fPIC -shared \
-               -Wl,--hash-style=both \
+               -Wl,--hash-style=sysv \
                -Wl,--build-id=sha1 \
                -Wl,-soname=linux-vdso.so.1 \
                -Wl,-z,max-page-size=4096 \

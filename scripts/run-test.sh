@@ -50,6 +50,10 @@ chmod +x "$UML_BIN"
 log "Kernel size: $(du -sh "$UML_BIN" | cut -f1)"
 log "Rootfs size: $(du -sh "$ROOTFS"  | cut -f1)"
 
+# UML helpers (port-helper, uml_switch) are embedded inside the kernel ELF.
+# The kernel extracts them to /tmp/uml-<umid>/ at startup automatically.
+# No host installation step needed.
+
 # ── /dev/shm exec check ──────────────────────────────────────────────────────
 # UML mmaps executable pages in /dev/shm. Docker mounts it noexec by default.
 # Detect and remount exec before UML runs, otherwise:
@@ -94,10 +98,15 @@ set +e
 MARKER_FILE="/tmp/uml-boot-ok-$$"
 rm -f "$MARKER_FILE"
 
-# init=/bin/sh reads from stdin (con=fd:0,fd:1).
-# We write the marker to a hostfs path so UML can touch it.
-# Fallback: also print the marker to stdout so it appears in the log,
-# then detect it with grep anchored to line-start to avoid bash error output.
+# umid: deterministic name → mconsole socket at ~/.uml/kerndbox-$$/mconsole
+# mconsole=notify:/path → kernel writes to socket when mconsole driver is ready
+# We wait for that signal before piping init commands, avoiding the race where
+# stdin arrives before the kernel is ready to read it.
+UMID="kerndbox-$$"
+MCONSOLE_READY="/tmp/mconsole-ready-$$"
+rm -f "$MCONSOLE_READY"
+
+# Run UML in background so we can wait for mconsole notify
 printf 'echo DEVBOX_BOOT_OK; touch %s; poweroff -f\n' "$MARKER_FILE" | \
 timeout 90 "$UML_BIN" \
     "ubd0=${ROOTFS}" \
@@ -105,6 +114,8 @@ timeout 90 "$UML_BIN" \
     rootfstype=ext4 \
     mem=512M \
     init=/bin/sh \
+    umid="$UMID" \
+    mconsole=notify:"$MCONSOLE_READY" \
     con=fd:0,fd:1
 
 EXIT_CODE=$?

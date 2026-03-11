@@ -128,6 +128,8 @@ jobs:
             --pattern "kernel-${{ matrix.arch_out }}" \
             --dir ./output
           chmod +x ./output/kernel-${{ matrix.arch_out }}
+          # helpers (port-helper, uml_switch) are embedded inside the kernel ELF.
+          # The kernel extracts them to /tmp/uml-<umid>/ at startup automatically.
           echo "Kernel: $(du -sh output/kernel-${{ matrix.arch_out }} | cut -f1)"
 
       - name: Download rootfs (${{ matrix.arch }})

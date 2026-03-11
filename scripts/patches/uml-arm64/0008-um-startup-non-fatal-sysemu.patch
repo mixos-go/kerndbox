@@ -1,12 +1,12 @@
-From: DevBox UML arm64 Port
 Subject: [PATCH 8/13] um/os-Linux/start_up.c: arm64 compat for check_ptrace + non-fatal sysemu
 
 arm64 cannot use PTRACE_PEEKUSER/POKEUSER. Adds arm64_check_ptrace() using
-PTRACE_GETREGSET + PTRACE_SET_SYSCALL. Makes check_sysemu() non-fatal.
-Guards ldt.h with CONFIG_X86. Calls arch_prctl_defaults() to disable PAC keys.
+PTRACE_GETREGSET/PTRACE_SET_SYSCALL. Makes sysemu failure non-fatal.
+Adds stdbool.h include and extern arch_prctl_defaults() for arm64.
+Calls arm64_check_ptrace() from check_ptrace() on arm64 (early return).
 
---- a/arch/um/os-Linux/start_up.c
-+++ b/arch/um/os-Linux/start_up.c
+--- a/arch/um/os-Linux/start_up.c	2026-03-11 17:44:22.707379804 +0000
++++ b/arch/um/os-Linux/start_up.c	2026-03-11 17:44:01.002245148 +0000
 @@ -17,7 +17,9 @@
  #include <sys/wait.h>
  #include <sys/time.h>
@@ -35,7 +35,7 @@ Guards ldt.h with CONFIG_X86. Calls arch_prctl_defaults() to disable PAC keys.
  
  static void ptrace_child(void)
  {
-@@ -184,6 +197,63 @@
+@@ -184,10 +197,73 @@
  	fatal("missing\n");
  }
  
@@ -99,7 +99,17 @@ Guards ldt.h with CONFIG_X86. Calls arch_prctl_defaults() to disable PAC keys.
  static void __init check_ptrace(void)
  {
  	int pid, syscall, n, status;
-@@ -283,6 +353,10 @@
+ 
++#ifdef __aarch64__
++	/* arm64 cannot use PTRACE_PEEKUSER/POKEUSER — use dedicated check */
++	arm64_check_ptrace();
++	return;
++#endif
++
+ 	os_info("Checking that ptrace can change system call numbers...");
+ 	pid = start_ptraced_child();
+ 
+@@ -283,6 +359,10 @@
  {
  	int pid;
  

@@ -96,11 +96,13 @@ do_status() {
     echo "[kerndbox] ── output/ ──────────────────────────────────────"
     local found=0
     for f in \
-        "output/kernel-arm64"            \
-        "output/kernel-x86_64"           \
-        "output/modules-arm64.tar.gz"    \
-        "output/modules-x86_64.tar.gz"   \
-        "output/debian-rootfs-aarch64.img" \
+        "output/kernel-bundle-arm64.tar.gz"  \
+        "output/kernel-bundle-x86_64.tar.gz" \
+        "output/kernel-arm64"                \
+        "output/kernel-x86_64"               \
+        "output/modules-arm64.tar.gz"         \
+        "output/modules-x86_64.tar.gz"        \
+        "output/debian-rootfs-aarch64.img"    \
         "output/debian-rootfs-x86_64.img"
     do
         if [[ -f "$f" ]]; then
@@ -174,10 +176,10 @@ case "$CMD" in
     BOOTSTRAP_TAG    Pin rootfs release tag  (default: latest)
 
   Output:
-    output/kernel-arm64              UML kernel binary
-    output/kernel-x86_64             UML kernel binary
-    output/modules-{arch}.tar.gz     Kernel modules
-    output/debian-rootfs-{arch}.img  Rootfs image
+    output/kernel-bundle-{arch}.tar.gz  Kernel ELF + uml_switch + port-helper
+    output/kernel-{arch}                Kernel ELF (extracted from bundle)
+    output/modules-{arch}.tar.gz        Kernel modules
+    output/debian-rootfs-{arch}.img     Rootfs image
 
 HELP
         ;;

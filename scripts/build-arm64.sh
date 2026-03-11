@@ -153,18 +153,166 @@ make -C "$SRC_DIR" O="$BUILD_DIR" "${MAKE_VARS[@]}" rustavailable \
 log "Configuring with arm64_defconfig..."
 make -C "$SRC_DIR" O="$BUILD_DIR" "${MAKE_VARS[@]}" arm64_defconfig $J
 
+# Apply all required config options using scripts/config (the proper kernel
+# tool). Handles Kconfig quoting, no duplicate-symbol warnings.
+# Mirrors the same options set in build-x86.sh for consistency.
+SC="$SRC_DIR/scripts/config" --file "$BUILD_DIR/.config"
+$SC --enable  EXT4_USE_FOR_EXT2
+$SC --enable  BINFMT_ELF
+$SC --enable  BINFMT_SCRIPT
+$SC --enable  UNIX98_PTYS
+$SC --enable  PROC_FS
+$SC --enable  SYSFS
+$SC --disable COMPACTION
+$SC --module  BINFMT_MISC
+$SC --enable  HOSTFS
+$SC --enable  MAGIC_SYSRQ
+$SC --enable  SYSVIPC
+$SC --enable  POSIX_MQUEUE
+$SC --enable  NO_HZ
+$SC --enable  HIGH_RES_TIMERS
+$SC --enable  BSD_PROCESS_ACCT
+$SC --enable  IKCONFIG
+$SC --enable  IKCONFIG_PROC
+$SC --set-val LOG_BUF_SHIFT 14
+$SC --enable  CGROUPS
+$SC --enable  CGROUP_FREEZER
+$SC --enable  CGROUP_DEVICE
+$SC --enable  CPUSETS
+$SC --enable  CGROUP_CPUACCT
+$SC --enable  CGROUP_SCHED
+$SC --enable  BLK_CGROUP
+$SC --disable PID_NS
+$SC --enable  SYSFS_DEPRECATED
+$SC --enable  CC_OPTIMIZE_FOR_SIZE
+$SC --enable  MODULES
+$SC --enable  MODULE_UNLOAD
+$SC --disable BLK_DEV_BSG
+$SC --module  IOSCHED_BFQ
+$SC --enable  SSL
+$SC --enable  NULL_CHAN
+$SC --enable  PORT_CHAN
+$SC --enable  PTY_CHAN
+$SC --enable  TTY_CHAN
+$SC --enable  XTERM_CHAN
+$SC --set-str CON_CHAN "pts"
+$SC --set-str SSL_CHAN "pts"
+$SC --module  SOUND
+$SC --module  UML_SOUND
+$SC --enable  DEVTMPFS
+$SC --enable  DEVTMPFS_MOUNT
+$SC --enable  BLK_DEV_UBD
+$SC --module  BLK_DEV_LOOP
+$SC --module  BLK_DEV_NBD
+$SC --module  DUMMY
+$SC --module  TUN
+$SC --module  PPP
+$SC --module  SLIP
+$SC --set-val LEGACY_PTY_COUNT 32
+$SC --disable HW_RANDOM
+$SC --enable  UML_RANDOM
+$SC --enable  NET
+$SC --enable  PACKET
+$SC --enable  UNIX
+$SC --enable  INET
+$SC --disable IPV6
+$SC --enable  UML_NET
+$SC --enable  UML_NET_ETHERTAP
+$SC --enable  UML_NET_TUNTAP
+$SC --enable  UML_NET_SLIP
+$SC --enable  UML_NET_DAEMON
+$SC --enable  UML_NET_MCAST
+$SC --enable  UML_NET_SLIRP
+$SC --enable  EXT4_FS
+$SC --enable  REISERFS_FS
+$SC --enable  QUOTA
+$SC --module  AUTOFS_FS
+$SC --module  ISO9660_FS
+$SC --enable  JOLIET
+$SC --enable  PROC_KCORE
+$SC --enable  TMPFS
+$SC --enable  NLS
+$SC --enable  DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
+$SC --set-val FRAME_WARN 1024
+$SC --enable  DEBUG_KERNEL
+$SC --enable  RUST
+unset SC
+make -C "$SRC_DIR" O="$BUILD_DIR" "${MAKE_VARS[@]}" olddefconfig
+
 # ── Compile ──────────────────────────────────────────────────────────────────
 log "Compiling UML kernel (~5 min)..."
 make -C "$SRC_DIR" O="$BUILD_DIR" "${MAKE_VARS[@]}" $J
 
-# ── Copy output ──────────────────────────────────────────────────────────────
-UML_BIN=$(find "$BUILD_DIR" -maxdepth 1 \( -name "linux" -o -name "vmlinux" \) 2>/dev/null | head -1)
-[[ -z "$UML_BIN" ]] && die "UML binary not found after build"
+# ── Build UML helper utilities (static) ─────────────────────────────────────
+# Compile ALL helpers as static binaries for embedding inside kernel ELF.
+# Kernel-called (MUST embed): port-helper, uml_watchdog
+# Operator tools (convenience): uml_mconsole, uml_mkcow, tunctl
+# uml_switch comes from kernel tools/uml/ (built separately below)
+log "Building UML helper utilities (static)..."
+HELPERS_SRC="$REPO_ROOT/src/uml-helpers"
+HELPERS_BUILD="$BUILD_DIR/uml-helpers"
+mkdir -p "$HELPERS_BUILD"
 
-DEST="$OUTPUT_DIR/kernel-arm64"
-cp "$UML_BIN" "$DEST"
-chmod +x "$DEST"
-log "Done: kernel-arm64 ($(du -sh "$DEST" | cut -f1))"
+for helper in port-helper uml_watchdog uml_mconsole uml_mkcow tunctl; do
+    gcc -O2 -static -fno-pie -no-pie \
+        -o "$HELPERS_BUILD/$helper" \
+        "$HELPERS_SRC/${helper}.c" 2>/dev/null && \
+        strip "$HELPERS_BUILD/$helper" && \
+        log "  → $helper ($(du -sh "$HELPERS_BUILD/$helper" | cut -f1))" \
+        || log "  WARNING: $helper build failed"
+done
+
+# uml_switch: built from kernel source (tools/uml/) to match kernel version
+log "Building uml_switch (tools/uml)..."
+make -C "$SRC_DIR" tools/uml $J 2>/dev/null || log "WARNING: tools/uml failed"
+SW_SRC=$(find "$SRC_DIR/tools/uml" -name "uml_switch" -type f 2>/dev/null | head -1)
+if [[ -n "$SW_SRC" ]]; then
+    cp "$SW_SRC" "$HELPERS_BUILD/uml_switch"
+    strip "$HELPERS_BUILD/uml_switch" 2>/dev/null || true
+    log "  → uml_switch ($(du -sh "$HELPERS_BUILD/uml_switch" | cut -f1))"
+fi
+
+# Pack all helpers into one .uml_helpers bundle
+HELPERS_BIN="$HELPERS_BUILD/uml_helpers.bin"
+HELPERS_ARGS=()
+for b in port-helper uml_watchdog uml_mconsole uml_mkcow tunctl uml_switch; do
+    [[ -f "$HELPERS_BUILD/$b" ]] && HELPERS_ARGS+=("$HELPERS_BUILD/$b")
+done
+
+if [[ ${#HELPERS_ARGS[@]} -gt 0 ]]; then
+    python3 "$HELPERS_SRC/pack_helpers.py" -o "$HELPERS_BIN" "${HELPERS_ARGS[@]}"
+    log "Helpers bundle: $(du -sh "$HELPERS_BIN" | cut -f1) (${#HELPERS_ARGS[@]} binaries)"
+else
+    log "WARNING: No helpers to embed"
+fi
+
+# ── Embed helpers into kernel ELF via objcopy ────────────────────────────────
+# Injects .uml_helpers section — linker symbols __uml_helpers_start/end
+# are referenced by arch/um/os-Linux/helpers_embed.c at runtime.
+UML_BIN_SRC=$(find "$BUILD_DIR" -maxdepth 1 \( -name "linux" -o -name "vmlinux" \) 2>/dev/null | head -1)
+[[ -z "$UML_BIN_SRC" ]] && die "UML binary not found after build"
+
+UML_BIN_FINAL="$OUTPUT_DIR/kernel-arm64"
+
+if [[ -f "$HELPERS_BIN" ]]; then
+    log "Injecting .uml_helpers section into kernel ELF..."
+    objcopy         --add-section .uml_helpers="$HELPERS_BIN"         --set-section-flags .uml_helpers=noload,readonly         "$UML_BIN_SRC" "$UML_BIN_FINAL"
+    chmod +x "$UML_BIN_FINAL"
+
+    # Verify injection
+    INJECTED=$(objdump -h "$UML_BIN_FINAL" 2>/dev/null | grep ".uml_helpers" | awk '{print $3}')
+    if [[ -n "$INJECTED" ]]; then
+        log "✓ .uml_helpers injected: 0x${INJECTED} bytes"
+    else
+        log "WARNING: .uml_helpers section not found after objcopy"
+    fi
+else
+    # No helpers — just copy the kernel binary as-is
+    cp "$UML_BIN_SRC" "$UML_BIN_FINAL"
+    chmod +x "$UML_BIN_FINAL"
+fi
+
+log "Done: kernel-arm64 ($(du -sh "$UML_BIN_FINAL" | cut -f1)) — self-contained with embedded helpers"
 
 # ── Package kernel modules ────────────────────────────────────────────────────
 # Install modules into a staging dir, then tar them up.

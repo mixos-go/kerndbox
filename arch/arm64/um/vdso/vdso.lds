@@ -2,10 +2,12 @@
 /*
  * arch/arm64/um/vdso/vdso.lds
  *
- * NOTE: GNU ld always creates .got.plt for shared libs even with -fno-plt.
- * /DISCARD/ causes "discarded output section" error. Fix: sink everything
- * unwanted into .discard section mapped to :text — ld is happy, objcopy -S
- * removes it when producing vdso.so from vdso.so.dbg.
+ * --hash-style=sysv in Makefile suppresses .gnu.hash entirely.
+ *
+ * GNU ld always creates .got.plt for shared libs even with -fno-plt.
+ * /DISCARD/ on a non-empty section errors: "discarded output section".
+ * Fix: sink .got.plt / .plt into .discard mapped to :text — ld is happy,
+ * objcopy -S removes it when producing vdso.so from vdso.so.dbg.
  */
 
 OUTPUT_FORMAT("elf64-littleaarch64", "elf64-littleaarch64", "elf64-littleaarch64")
@@ -31,7 +33,11 @@ SECTIONS {
 
 	.text		: { *(.text*) }			:text
 
-	/* Sink — ld maps to :text so it doesn't complain, objcopy -S strips */
+	/*
+	 * Sink for unwanted sections. Placed in :text so GNU ld does not
+	 * error on "discarded output section". objcopy -S strips these when
+	 * producing the final vdso.so from vdso.so.dbg.
+	 */
 	.discard	: {
 		*(.discard) *(.discard.*)
 		*(.note.GNU-stack)
