@@ -30,7 +30,6 @@ CONFIG_CROSS_MEMORY_ATTACH=y
 CONFIG_MODULES=y
 CONFIG_MODULE_UNLOAD=y
 CONFIG_MODULE_FORCE_UNLOAD=y
-CONFIG_MODVERSIONS=y
 # TODO: re-enable after asm/asm-prototypes.h override is complete
 # (currently memcpy/memmove/memset CRC generation fails → unpredictable module load)
 

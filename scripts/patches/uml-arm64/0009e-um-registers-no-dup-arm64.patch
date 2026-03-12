@@ -1,0 +1,23 @@
+From: kerndbox <kerndbox@mixos.io>
+Subject: [PATCH] um/os-Linux/registers.c: guard get_safe_registers for non-arm64
+
+arch/arm64/um/os-Linux/registers.c provides an arm64-specific
+get_safe_registers() that zeroes registers (arm64 has no exec_regs
+snapshot). Without this guard, both definitions are linked and the
+build fails with "multiple definition of get_safe_registers".
+
+--- a/arch/um/os-Linux/registers.c
++++ b/arch/um/os-Linux/registers.c
+@@ -32,6 +32,7 @@ int init_pid_registers(int pid)
+ 	return 0;
+ }
+ 
++#ifndef __aarch64__
+ void get_safe_registers(unsigned long *regs, unsigned long *fp_regs)
+ {
+ 	memcpy(regs, exec_regs, sizeof(exec_regs));
+@@ -40,3 +41,4 @@ void get_safe_registers(unsigned long *regs, unsigned long *fp_regs)
+ 	if (fp_regs)
+ 		memcpy(fp_regs, exec_fp_regs, sizeof(exec_fp_regs));
+ }
++#endif /* !__aarch64__ */

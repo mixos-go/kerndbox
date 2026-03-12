@@ -45,6 +45,7 @@ apt-get install -y --no-install-recommends \
     rsync kmod cpio \
     xz-utils tar gzip bzip2 zstd \
     openssl \
+    zlib1g-dev \
     `# Misc` \
     git patch diffutils wget curl ca-certificates \
     util-linux e2fsprogs \
@@ -247,7 +248,8 @@ done
 
 # uml_switch: built from kernel source (tools/uml/) to match kernel version
 log "Building uml_switch (tools/uml)..."
-make -C "$SRC_DIR" tools/uml $J 2>/dev/null || log "WARNING: tools/uml failed"
+# tools/uml builds uml_switch for the HOST arch (no ARCH=um needed)
+make -C "$SRC_DIR" ARCH=um tools/uml $J || log "WARNING: tools/uml build failed (uml_switch will be absent)"
 SW_SRC=$(find "$SRC_DIR/tools/uml" -name "uml_switch" -type f 2>/dev/null | head -1)
 if [[ -n "$SW_SRC" ]]; then
     cp "$SW_SRC" "$HELPERS_BUILD/uml_switch"

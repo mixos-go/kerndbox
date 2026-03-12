@@ -45,6 +45,7 @@ apt-get install -y --no-install-recommends \
     rsync kmod cpio \
     xz-utils tar gzip bzip2 zstd \
     openssl \
+    zlib1g-dev \
     `# Misc` \
     git patch diffutils wget curl ca-certificates \
     util-linux e2fsprogs \
@@ -143,14 +144,19 @@ fi
 MAKE_VARS=(
     ARCH=um
     SUBARCH=arm64
-    # Allow cross-compilation on x86_64 hosts
-    CROSS_COMPILE=aarch64-linux-gnu-
-    # rust/Makefile resolves: BINDGEN_TARGET := BINDGEN_TARGET_$(SRCARCH)
-    # With ARCH=um → SRCARCH=um → BINDGEN_TARGET_um undefined → empty string
-    # → bindgen gets --target '' → panics "unknown target triple 'unknown'"
-    # Fix: pass the host triple explicitly.
+    # BINDGEN_TARGET: kernel SRCARCH=um → BINDGEN_TARGET_um undefined → empty.
+    # Pass the real host triple so bindgen doesn't panic.
     BINDGEN_TARGET=aarch64-linux-gnu
 )
+
+# CROSS_COMPILE: only needed when building on a non-aarch64 host.
+# On the native aarch64 CI runner, setting CROSS_COMPILE=aarch64-linux-gnu-
+# is a no-op at best, and breaks Rust toolchain detection at worst
+# (because CC becomes aarch64-linux-gnu-gcc which may not be installed).
+if [[ "$HOST_ARCH" != "aarch64" ]]; then
+    MAKE_VARS+=( CROSS_COMPILE=aarch64-linux-gnu- )
+    log "Cross-compiling: adding CROSS_COMPILE=aarch64-linux-gnu-"
+fi
 
 # Add Rust tools only if not skipping
 if [[ "${SKIP_RUST:-0}" != "1" ]]; then
@@ -261,6 +267,8 @@ $SC --file "$BUILD_DIR/.config" --enable  DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
 $SC --file "$BUILD_DIR/.config" --set-val FRAME_WARN 1024
 $SC --file "$BUILD_DIR/.config" --enable  DEBUG_KERNEL
 $SC --file "$BUILD_DIR/.config" --enable  RUST
+# MODVERSIONS conflicts with CONFIG_RUST (depends on !MODVERSIONS)
+$SC --file "$BUILD_DIR/.config" --disable MODVERSIONS
 unset SC
 make -C "$SRC_DIR" O="$BUILD_DIR" "${MAKE_VARS[@]}" olddefconfig
 
@@ -289,7 +297,8 @@ done
 
 # uml_switch: built from kernel source (tools/uml/) to match kernel version
 log "Building uml_switch (tools/uml)..."
-make -C "$SRC_DIR" tools/uml $J 2>/dev/null || log "WARNING: tools/uml failed"
+# tools/uml builds uml_switch for the HOST arch (no ARCH=um needed)
+make -C "$SRC_DIR" ARCH=um tools/uml $J || log "WARNING: tools/uml build failed (uml_switch will be absent)"
 SW_SRC=$(find "$SRC_DIR/tools/uml" -name "uml_switch" -type f 2>/dev/null | head -1)
 if [[ -n "$SW_SRC" ]]; then
     cp "$SW_SRC" "$HELPERS_BUILD/uml_switch"
