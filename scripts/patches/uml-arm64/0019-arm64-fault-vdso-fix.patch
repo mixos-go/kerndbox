@@ -1,0 +1,40 @@
+--- a/arch/arm64/um/fault.c
++++ b/arch/arm64/um/fault.c
+@@ -17,11 +17,19 @@
+  */
+ 
+ #include <arch.h>
+ #include <sysdep/ptrace.h>
+-#include <asm/extable.h>   /* arm64 struct exception_table_entry (relative) */
+ #include <linux/extable.h> /* search_exception_tables() */
+ 
++/* arm64 uses RELATIVE extable entries (ARCH_HAS_RELATIVE_EXTABLE) */
++struct exception_table_entry {
++unsigned long insn;
++unsigned long fixup;
++short type;
++short data;
++};
++
+ int arch_fixup(unsigned long address, struct uml_pt_regs *regs)
+ {
+ const struct exception_table_entry *entry;
+--- a/arch/arm64/um/vdso/vdso.S
++++ b/arch/arm64/um/vdso/vdso.S
+@@ -6,14 +6,14 @@
+  * mapped into user processes.
+  */
+ 
+-#include <linux/init.h>
+-
+-__PAGE_ALIGNED_DATA
++.section .data,"aw",@progbits
++.balign 4096
+ 
+ .globl vdso_start, vdso_end
+ vdso_start:
+ .incbin "arch/arm64/um/vdso/vdso.so"
+ vdso_end:
+ 
+-.balign PAGE_SIZE
++.balign 4096

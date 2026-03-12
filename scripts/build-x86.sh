@@ -15,6 +15,7 @@ set -euo pipefail
 OUTPUT_DIR="$(pwd)/output"
 BUILD_LOG="$OUTPUT_DIR/build-x86_64.log"
 UML_KERNEL_VERSION="${UML_KERNEL_VERSION:-6.12.74}"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -138,86 +139,86 @@ make -C "$SRC_DIR" O="$BUILD_DIR" "${MAKE_VARS[@]}" defconfig $J
 
 # Set essential UML features using scripts/config (the proper kernel tool).
 # This avoids duplicate-symbol warnings and handles quoting correctly.
-SC="$SRC_DIR/scripts/config" --file "$BUILD_DIR/.config"
-$SC --enable  EXT4_USE_FOR_EXT2
-$SC --enable  BINFMT_ELF
-$SC --enable  BINFMT_SCRIPT
-$SC --enable  UNIX98_PTYS
-$SC --enable  PROC_FS
-$SC --enable  SYSFS
-$SC --disable COMPACTION
-$SC --module  BINFMT_MISC
-$SC --enable  HOSTFS
-$SC --enable  MAGIC_SYSRQ
-$SC --enable  SYSVIPC
-$SC --enable  POSIX_MQUEUE
-$SC --enable  NO_HZ
-$SC --enable  HIGH_RES_TIMERS
-$SC --enable  BSD_PROCESS_ACCT
-$SC --enable  IKCONFIG
-$SC --enable  IKCONFIG_PROC
-$SC --set-val LOG_BUF_SHIFT 14
-$SC --enable  CGROUPS
-$SC --enable  CGROUP_FREEZER
-$SC --enable  CGROUP_DEVICE
-$SC --enable  CPUSETS
-$SC --enable  CGROUP_CPUACCT
-$SC --enable  CGROUP_SCHED
-$SC --enable  BLK_CGROUP
-$SC --disable PID_NS
-$SC --enable  SYSFS_DEPRECATED
-$SC --enable  CC_OPTIMIZE_FOR_SIZE
-$SC --enable  MODULES
-$SC --enable  MODULE_UNLOAD
-$SC --disable BLK_DEV_BSG
-$SC --module  IOSCHED_BFQ
-$SC --enable  SSL
-$SC --enable  NULL_CHAN
-$SC --enable  PORT_CHAN
-$SC --enable  PTY_CHAN
-$SC --enable  TTY_CHAN
-$SC --enable  XTERM_CHAN
-$SC --set-str CON_CHAN "pts"
-$SC --set-str SSL_CHAN "pts"
-$SC --module  SOUND
-$SC --module  UML_SOUND
-$SC --enable  DEVTMPFS
-$SC --enable  DEVTMPFS_MOUNT
-$SC --enable  BLK_DEV_UBD
-$SC --module  BLK_DEV_LOOP
-$SC --module  BLK_DEV_NBD
-$SC --module  DUMMY
-$SC --module  TUN
-$SC --module  PPP
-$SC --module  SLIP
-$SC --set-val LEGACY_PTY_COUNT 32
-$SC --disable HW_RANDOM
-$SC --enable  UML_RANDOM
-$SC --enable  NET
-$SC --enable  PACKET
-$SC --enable  UNIX
-$SC --enable  INET
-$SC --disable IPV6
-$SC --enable  UML_NET
-$SC --enable  UML_NET_ETHERTAP
-$SC --enable  UML_NET_TUNTAP
-$SC --enable  UML_NET_SLIP
-$SC --enable  UML_NET_DAEMON
-$SC --enable  UML_NET_MCAST
-$SC --enable  UML_NET_SLIRP
-$SC --enable  EXT4_FS
-$SC --enable  REISERFS_FS
-$SC --enable  QUOTA
-$SC --module  AUTOFS_FS
-$SC --module  ISO9660_FS
-$SC --enable  JOLIET
-$SC --enable  PROC_KCORE
-$SC --enable  TMPFS
-$SC --enable  NLS
-$SC --enable  DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
-$SC --set-val FRAME_WARN 1024
-$SC --enable  DEBUG_KERNEL
-$SC --enable  RUST
+SC="$SRC_DIR/scripts/config"
+$SC --file "$BUILD_DIR/.config" --enable  EXT4_USE_FOR_EXT2
+$SC --file "$BUILD_DIR/.config" --enable  BINFMT_ELF
+$SC --file "$BUILD_DIR/.config" --enable  BINFMT_SCRIPT
+$SC --file "$BUILD_DIR/.config" --enable  UNIX98_PTYS
+$SC --file "$BUILD_DIR/.config" --enable  PROC_FS
+$SC --file "$BUILD_DIR/.config" --enable  SYSFS
+$SC --file "$BUILD_DIR/.config" --disable COMPACTION
+$SC --file "$BUILD_DIR/.config" --module  BINFMT_MISC
+$SC --file "$BUILD_DIR/.config" --enable  HOSTFS
+$SC --file "$BUILD_DIR/.config" --enable  MAGIC_SYSRQ
+$SC --file "$BUILD_DIR/.config" --enable  SYSVIPC
+$SC --file "$BUILD_DIR/.config" --enable  POSIX_MQUEUE
+$SC --file "$BUILD_DIR/.config" --enable  NO_HZ
+$SC --file "$BUILD_DIR/.config" --enable  HIGH_RES_TIMERS
+$SC --file "$BUILD_DIR/.config" --enable  BSD_PROCESS_ACCT
+$SC --file "$BUILD_DIR/.config" --enable  IKCONFIG
+$SC --file "$BUILD_DIR/.config" --enable  IKCONFIG_PROC
+$SC --file "$BUILD_DIR/.config" --set-val LOG_BUF_SHIFT 14
+$SC --file "$BUILD_DIR/.config" --enable  CGROUPS
+$SC --file "$BUILD_DIR/.config" --enable  CGROUP_FREEZER
+$SC --file "$BUILD_DIR/.config" --enable  CGROUP_DEVICE
+$SC --file "$BUILD_DIR/.config" --enable  CPUSETS
+$SC --file "$BUILD_DIR/.config" --enable  CGROUP_CPUACCT
+$SC --file "$BUILD_DIR/.config" --enable  CGROUP_SCHED
+$SC --file "$BUILD_DIR/.config" --enable  BLK_CGROUP
+$SC --file "$BUILD_DIR/.config" --disable PID_NS
+$SC --file "$BUILD_DIR/.config" --enable  SYSFS_DEPRECATED
+$SC --file "$BUILD_DIR/.config" --enable  CC_OPTIMIZE_FOR_SIZE
+$SC --file "$BUILD_DIR/.config" --enable  MODULES
+$SC --file "$BUILD_DIR/.config" --enable  MODULE_UNLOAD
+$SC --file "$BUILD_DIR/.config" --disable BLK_DEV_BSG
+$SC --file "$BUILD_DIR/.config" --module  IOSCHED_BFQ
+$SC --file "$BUILD_DIR/.config" --enable  SSL
+$SC --file "$BUILD_DIR/.config" --enable  NULL_CHAN
+$SC --file "$BUILD_DIR/.config" --enable  PORT_CHAN
+$SC --file "$BUILD_DIR/.config" --enable  PTY_CHAN
+$SC --file "$BUILD_DIR/.config" --enable  TTY_CHAN
+$SC --file "$BUILD_DIR/.config" --enable  XTERM_CHAN
+$SC --file "$BUILD_DIR/.config" --set-str CON_CHAN "pts"
+$SC --file "$BUILD_DIR/.config" --set-str SSL_CHAN "pts"
+$SC --file "$BUILD_DIR/.config" --module  SOUND
+$SC --file "$BUILD_DIR/.config" --module  UML_SOUND
+$SC --file "$BUILD_DIR/.config" --enable  DEVTMPFS
+$SC --file "$BUILD_DIR/.config" --enable  DEVTMPFS_MOUNT
+$SC --file "$BUILD_DIR/.config" --enable  BLK_DEV_UBD
+$SC --file "$BUILD_DIR/.config" --module  BLK_DEV_LOOP
+$SC --file "$BUILD_DIR/.config" --module  BLK_DEV_NBD
+$SC --file "$BUILD_DIR/.config" --module  DUMMY
+$SC --file "$BUILD_DIR/.config" --module  TUN
+$SC --file "$BUILD_DIR/.config" --module  PPP
+$SC --file "$BUILD_DIR/.config" --module  SLIP
+$SC --file "$BUILD_DIR/.config" --set-val LEGACY_PTY_COUNT 32
+$SC --file "$BUILD_DIR/.config" --disable HW_RANDOM
+$SC --file "$BUILD_DIR/.config" --enable  UML_RANDOM
+$SC --file "$BUILD_DIR/.config" --enable  NET
+$SC --file "$BUILD_DIR/.config" --enable  PACKET
+$SC --file "$BUILD_DIR/.config" --enable  UNIX
+$SC --file "$BUILD_DIR/.config" --enable  INET
+$SC --file "$BUILD_DIR/.config" --disable IPV6
+$SC --file "$BUILD_DIR/.config" --enable  UML_NET
+$SC --file "$BUILD_DIR/.config" --enable  UML_NET_ETHERTAP
+$SC --file "$BUILD_DIR/.config" --enable  UML_NET_TUNTAP
+$SC --file "$BUILD_DIR/.config" --enable  UML_NET_SLIP
+$SC --file "$BUILD_DIR/.config" --enable  UML_NET_DAEMON
+$SC --file "$BUILD_DIR/.config" --enable  UML_NET_MCAST
+$SC --file "$BUILD_DIR/.config" --enable  UML_NET_SLIRP
+$SC --file "$BUILD_DIR/.config" --enable  EXT4_FS
+$SC --file "$BUILD_DIR/.config" --enable  REISERFS_FS
+$SC --file "$BUILD_DIR/.config" --enable  QUOTA
+$SC --file "$BUILD_DIR/.config" --module  AUTOFS_FS
+$SC --file "$BUILD_DIR/.config" --module  ISO9660_FS
+$SC --file "$BUILD_DIR/.config" --enable  JOLIET
+$SC --file "$BUILD_DIR/.config" --enable  PROC_KCORE
+$SC --file "$BUILD_DIR/.config" --enable  TMPFS
+$SC --file "$BUILD_DIR/.config" --enable  NLS
+$SC --file "$BUILD_DIR/.config" --enable  DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
+$SC --file "$BUILD_DIR/.config" --set-val FRAME_WARN 1024
+$SC --file "$BUILD_DIR/.config" --enable  DEBUG_KERNEL
+$SC --file "$BUILD_DIR/.config" --enable  RUST
 unset SC
 make -C "$SRC_DIR" O="$BUILD_DIR" "${MAKE_VARS[@]}" olddefconfig
 
@@ -278,7 +279,7 @@ UML_BIN_FINAL="$OUTPUT_DIR/kernel-x86_64"
 
 if [[ -f "$HELPERS_BIN" ]]; then
     log "Injecting .uml_helpers section into kernel ELF..."
-    objcopy         --add-section .uml_helpers="$HELPERS_BIN"         --set-section-flags .uml_helpers=noload,readonly         "$UML_BIN_SRC" "$UML_BIN_FINAL"
+    objcopy --add-section .uml_helpers="$HELPERS_BIN" --set-section-flags .uml_helpers=alloc,load,readonly "$UML_BIN_SRC" "$UML_BIN_FINAL"
     chmod +x "$UML_BIN_FINAL"
 
     # Verify injection

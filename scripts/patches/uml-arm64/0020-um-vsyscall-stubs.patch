@@ -1,0 +1,32 @@
+--- /dev/null
++++ b/arch/um/kernel/vsyscall_stubs.c
+@@ -0,0 +1,19 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * UML vsyscall stubs - provide empty implementations for vsyscall functions
++ * that UML doesn't need (arm64 doesn't have vsyscall, x86 uses a different mechanism)
++ */
++
++#include <linux/timekeeper_internal.h>
++
++void update_vsyscall(struct timekeeper *tk)
++{
++/* UML doesn't use vsyscall - this is a stub */
++}
++EXPORT_SYMBOL(update_vsyscall);
++
++void update_vsyscall_tz(void)
++{
++/* UML doesn't use vsyscall - this is a stub */
++}
++EXPORT_SYMBOL(update_vsyscall_tz);
+--- a/arch/um/kernel/Makefile
++++ b/arch/um/kernel/Makefile
+@@ -17,7 +17,7 @@ CPPFLAGS_vmlinux.lds := -DSTART=$(LDS_START) \
+ 
+ obj-y = config.o exec.o exitcode.o irq.o ksyms.o mem.o \
+         physmem.o process.o ptrace.o reboot.o sigio.o \
+-        signal.o sysrq.o time.o tlb.o trap.o \
++        signal.o sysrq.o time.o tlb.o trap.o vsyscall_stubs.o \
+         um_arch.o umid.o kmsg_dump.o skas/
+ obj-y += load_file.o

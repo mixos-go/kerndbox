@@ -18,7 +18,15 @@
 
 #include <arch.h>
 #include <sysdep/ptrace.h>
-#include <asm/extable.h>   /* arm64 struct exception_table_entry (relative) */
+
+/* arm64 uses RELATIVE extable entries (ARCH_HAS_RELATIVE_EXTABLE) */
+struct exception_table_entry {
+	unsigned long insn;
+	unsigned long fixup;
+	short type;
+	short data;
+};
+
 #include <linux/extable.h> /* search_exception_tables() */
 
 int arch_fixup(unsigned long address, struct uml_pt_regs *regs)
