@@ -78,11 +78,15 @@ fi
 # Debian bookworm rustc (1.63) too old — kernel 6.12 needs 1.78.0+
 # Debian bookworm bindgen (0.60.1) too old — kernel needs 0.65.1+
 
-# GitHub Actions runner has $HOME=/github/home, not /root.
-# Pin RUSTUP_HOME and CARGO_HOME explicitly so we always know where they are.
+# GitHub Actions runner sets $HOME=/github/home, but euid passwd entry is /root.
+# rustup validates $HOME == getpwuid(euid)->pw_dir and aborts if they differ.
+# Fix: set HOME to what passwd says for current uid BEFORE any rustup invocation.
+export HOME="$(getent passwd "$(id -u)" | cut -d: -f6)"
+# Pin RUSTUP_HOME and CARGO_HOME to stable paths (not inside $HOME).
 export RUSTUP_HOME="/opt/rustup"
 export CARGO_HOME="/opt/cargo"
 export PATH="/opt/cargo/bin:$PATH"
+log "HOME=$HOME  RUSTUP_HOME=$RUSTUP_HOME  CARGO_HOME=$CARGO_HOME" 
 
 if ! command -v rustup >/dev/null 2>&1; then
     log "Installing rustup..."
@@ -249,8 +253,9 @@ done
 # uml_switch: built from kernel source (tools/uml/) to match kernel version
 log "Building uml_switch (tools/uml)..."
 # tools/uml builds uml_switch for the HOST arch (no ARCH=um needed)
-make -C "$SRC_DIR" ARCH=um tools/uml $J || log "WARNING: tools/uml build failed (uml_switch will be absent)"
-SW_SRC=$(find "$SRC_DIR/tools/uml" -name "uml_switch" -type f 2>/dev/null | head -1)
+make -C "$SRC_DIR" O="$BUILD_DIR" tools/uml $J || log "WARNING: tools/uml build failed (uml_switch will be absent)"
+# tools/uml dengan O= akan output ke BUILD_DIR/tools/uml/
+SW_SRC=$(find "$BUILD_DIR/tools/uml" "$SRC_DIR/tools/uml" -name "uml_switch" -type f 2>/dev/null | head -1)
 if [[ -n "$SW_SRC" ]]; then
     cp "$SW_SRC" "$HELPERS_BUILD/uml_switch"
     strip "$HELPERS_BUILD/uml_switch" 2>/dev/null || true
