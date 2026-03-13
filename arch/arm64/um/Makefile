@@ -16,13 +16,7 @@ obj-y = bugs.o \
 
 obj-y  += os-Linux/
 obj-y  += vdso/
-obj-y  += subarch.o
-
-# Pull in arm64 string routines so modules can resolve memcpy/memset/memmove.
-# kbuild composite object: subarch.o = ld -r of all subarch-y entries.
-# Same pattern as arch/x86/um/Makefile.
-subarch-y  = ../lib/memcpy.o ../lib/memset.o
-subarch-$(CONFIG_MODULES) += ../kernel/module.o
+obj-y  += mem_exports.o
 
 # stub_segv is mapped into every child process - must not be PIC or profiled
 UNPROFILE_OBJS := stub_segv.o
