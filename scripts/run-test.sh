@@ -164,8 +164,9 @@ log "=== Booting UML ==="
     "ubd0=${ROOTFS}" \
     root=/dev/ubda \
     rootfstype=ext4 \
+    rw \
     mem=512M \
-    init=/bin/sh \
+    init=/bin/bash \
     umid="$UMID" \
     "mconsole=notify:${NOTIFY_SOCK}" \
     con=fd:0,fd:1 \
@@ -220,6 +221,21 @@ log "mconsole ready: $MC_SOCK"
 # Beri sedikit waktu: mconsole notify fires saat driver ready,
 # tapi init=/bin/sh mungkin belum selesai boot ke prompt.
 sleep 2
+
+# ── Cek apakah UML sudah exit dengan panic ────────────────────────────
+# Jika "Requested init" gagal, UML exit sangat cepat sebelum kita bisa kirim commands
+if ! kill -0 "$UML_PID" 2>/dev/null; then
+    log "❌  UML sudah exit sebelum init commands dikirim"
+    if grep -q "Requested init.*failed" "$UML_LOG" 2>/dev/null; then
+        log "    PENYEBAB: init binary tidak ditemukan di rootfs (ENOENT)"
+        log "    Rootfs kemungkinan incomplete — rebuild dengan: workflow rootfs"
+        log "    (debootstrap second stage gagal jika dijalankan dalam Docker tanpa mount proc)"
+    fi
+    log "--- Full UML output ---"
+    cat "$UML_LOG" 2>/dev/null | sed "s/^/  /"
+    log "---"
+    exit 1
+fi
 
 log "Mengirim init commands via stdin FIFO..."
 {
