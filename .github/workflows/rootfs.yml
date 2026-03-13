@@ -29,7 +29,8 @@ on:
         required: true
         default: "kernel-v0.1.0"
 
-permissions: {}
+permissions:
+  contents: read
 
 concurrency:
   group: rootfs-${{ github.event.inputs.version }}
@@ -58,8 +59,6 @@ jobs:
     permissions:
       contents: read
     runs-on: ${{ matrix.runner }}
-    container:
-      image: debian:bookworm
     strategy:
       matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
       fail-fast: false
@@ -77,16 +76,24 @@ jobs:
           mkdir -p output
           KERNEL_TAG="${{ github.event.inputs.kernel_tag }}"
           ARCH_OUT="${{ matrix.arch_out }}"
+          REPO="${{ github.repository }}"
 
           echo "Fetching modules-${ARCH_OUT}.tar.gz from ${KERNEL_TAG}..."
-          if gh release download "${KERNEL_TAG}" \
-              --repo ${{ github.repository }} \
-              --pattern "modules-${ARCH_OUT}.tar.gz" \
-              --dir ./output; then
+
+          # Use curl + GitHub API — gh CLI may not be available on bare runners
+          DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${KERNEL_TAG}/modules-${ARCH_OUT}.tar.gz"
+          HTTP_CODE=$(curl -fsSL -w "%{http_code}" -o output/modules-${ARCH_OUT}.tar.gz \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/octet-stream" \
+            "${DOWNLOAD_URL}" 2>/dev/null || echo "000")
+
+          if [ -f output/modules-${ARCH_OUT}.tar.gz ] && \
+             tar -tzf output/modules-${ARCH_OUT}.tar.gz >/dev/null 2>&1; then
             KO_COUNT=$(tar -tzf output/modules-${ARCH_OUT}.tar.gz | grep -c '\.ko$' || true)
-            echo "  → ${KO_COUNT} .ko modules"
+            echo "  → ${KO_COUNT} .ko modules downloaded"
             echo "MODULES_TAR=$(pwd)/output/modules-${ARCH_OUT}.tar.gz" >> "$GITHUB_ENV"
           else
+            rm -f output/modules-${ARCH_OUT}.tar.gz
             echo "WARNING: modules-${ARCH_OUT}.tar.gz not found in ${KERNEL_TAG}"
             echo "  Rootfs will have empty /lib/modules/ - run kernel workflow first"
             echo "MODULES_TAR=" >> "$GITHUB_ENV"
@@ -96,7 +103,7 @@ jobs:
         run: |
           chmod +x scripts/build-debian-image.sh
           ARCH_UPPER=$(echo "${{ matrix.arch }}" | tr '[:lower:]' '[:upper:]' | tr - _)
-          env "MODULES_TAR_${ARCH_UPPER}=${MODULES_TAR}" \
+          sudo env "MODULES_TAR_${ARCH_UPPER}=${MODULES_TAR}" \
             ./scripts/build-debian-image.sh ${{ matrix.arch }}
 
       - name: Upload artifact
