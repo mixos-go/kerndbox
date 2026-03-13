@@ -1,0 +1,25 @@
+Subject: [PATCH] scripts,rust: generate target.json for UML arm64
+
+--- a/scripts/Makefile	2026-03-12 13:29:09.200630273 +0000
++++ b/scripts/Makefile	2026-03-12 13:29:09.282636803 +0000
+@@ -12,7 +12,7 @@
+ hostprogs-always-$(CONFIG_RUST_KERNEL_DOCTESTS)		+= rustdoc_test_builder
+ hostprogs-always-$(CONFIG_RUST_KERNEL_DOCTESTS)		+= rustdoc_test_gen
+ 
+-ifneq ($(or $(CONFIG_X86_64),$(CONFIG_X86_32)),)
++ifneq ($(or $(CONFIG_X86_64),$(CONFIG_X86_32),$(and $(CONFIG_ARM64),$(CONFIG_UML))),)
+ always-$(CONFIG_RUST)					+= target.json
+ filechk_rust_target = $< < include/config/auto.conf
+ 
+
+--- a/rust/Makefile	2026-03-12 13:29:09.206630751 +0000
++++ b/rust/Makefile	2026-03-12 13:29:09.282636803 +0000
+@@ -433,7 +433,7 @@
+ $(obj)/core.o: $(RUST_LIB_SRC)/core/src/lib.rs \
+     $(wildcard $(objtree)/include/config/RUSTC_VERSION_TEXT) FORCE
+ 	+$(call if_changed_rule,rustc_library)
+-ifneq ($(or $(CONFIG_X86_64),$(CONFIG_X86_32)),)
++ifneq ($(or $(CONFIG_X86_64),$(CONFIG_X86_32),$(and $(CONFIG_ARM64),$(CONFIG_UML))),)
+ $(obj)/core.o: scripts/target.json
+ endif
+ 
