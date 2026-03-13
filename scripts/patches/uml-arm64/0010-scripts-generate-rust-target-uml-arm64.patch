@@ -5,6 +5,10 @@ arm64 bare-metal uses the builtin rustc aarch64-unknown-none target.
 However, UML arm64 runs as a Linux userspace process, so it needs a
 custom target.json similar to how x86_64 UML generates one.
 
+When ARCH=um SUBARCH=arm64, auto.conf sets CONFIG_UML_ARM64=y but NOT
+CONFIG_ARM64 (SRCARCH=um, not arm64). So we must check UML_ARM64, not
+ARM64, to detect this case.
+
 The UML arm64 target:
   - llvm-target: aarch64-linux-gnu (Linux userspace, not bare-metal)
   - features: -neon,-sve,-sve2,-fp-armv8 (UML kernel code must not use
@@ -13,20 +17,19 @@ The UML arm64 target:
   - relocation-model: pic (UML is a position-independent executable)
 
 Without this, CONFIG_RUST=y on UML arm64 panics during target.json
-generation with "arm64 uses the builtin rustc aarch64-unknown-none target".
+generation with "Unsupported architecture".
 
 --- a/scripts/generate_rust_target.rs
 +++ b/scripts/generate_rust_target.rs
-@@ -185,7 +185,26 @@
+@@ -185,6 +185,26 @@
  
      // `llvm-target`s are taken from `scripts/Makefile.clang`.
      if cfg.has("ARM64") {
--        panic!("arm64 uses the builtin rustc aarch64-unknown-none target");
-+        if !cfg.has("UML") {
-+            panic!("arm64 uses the builtin rustc aarch64-unknown-none target");
-+        }
+         panic!("arm64 uses the builtin rustc aarch64-unknown-none target");
++    } else if cfg.has("UML_ARM64") {
 +        // UML arm64: runs as a Linux userspace process on an arm64 host.
 +        // Cannot use aarch64-unknown-none (bare-metal); needs a Linux target.
++        // Note: ARCH=um SUBARCH=arm64 sets CONFIG_UML_ARM64, not CONFIG_ARM64.
 +        ts.push("arch", "aarch64");
 +        ts.push(
 +            "data-layout",
