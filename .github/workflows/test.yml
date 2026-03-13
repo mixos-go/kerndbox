@@ -114,7 +114,7 @@ jobs:
       - name: Install tools
         run: |
           apt-get update -qq
-          apt-get install -y --no-install-recommends gh curl ca-certificates
+          apt-get install -y --no-install-recommends gh curl ca-certificates python3
 
       - name: Download kernel (${{ matrix.arch_out }})
         env:
