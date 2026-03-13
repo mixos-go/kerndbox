@@ -20,123 +20,29 @@ Single kernel binary is fully self-contained, no host install required.
  
 --- /dev/null
 +++ b/arch/um/os-Linux/helpers_embed.c
-@@ -0,0 +1,100 @@
+@@ -0,0 +1,23 @@
 +// SPDX-License-Identifier: GPL-2.0
 +/*
-+ * UML embedded helper extraction.
-+ *
-+ * At startup, extract helpers from the .uml_helpers ELF section to
-+ * /tmp/uml-<umid>/ and configure PATH + env vars so kernel drivers
-+ * can exec() them via run_helper().
-+ *
-+ * Bundle format (UMLH, little-endian):
-+ *   u8[4]  magic "UMLH"
-+ *   u32    count
-+ *   entry[]: name\0 + u32 compressed_size + gzip data
++ * UML embedded helper extraction - stub implementation.
++ * Helpers are expected to be found via PATH or explicit env vars.
 + */
-+#define _GNU_SOURCE
-+#include <linux/types.h>
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <string.h>
 +#include <unistd.h>
-+#include <fcntl.h>
-+#include <sys/stat.h>
-+#include <zlib.h>
-+#include <os.h>
-+
-+/* Linker-generated symbols bracketing the .uml_helpers section.
-+ * Section name ".uml_helpers" → linker symbols __start__uml_helpers /
-+ * __stop__uml_helpers (dot replaced by underscore in symbol names). */
-+extern const char __start__uml_helpers[] __attribute__((weak));
-+extern const char __stop__uml_helpers[]  __attribute__((weak));
 +
 +char uml_helpers_dir[256] = "";
 +
-+static __u32 rd_le32(const unsigned char *p)
-+{
-+	return (__u32)p[0] | ((__u32)p[1]<<8) |
-+	       ((__u32)p[2]<<16) | ((__u32)p[3]<<24);
-+}
-+
 +void uml_helpers_extract(const char *umid)
 +{
-+	const unsigned char *p, *end;
-+	__u32 count, i;
-+	char path[512];
-+	int fd;
-+
-+	if (!__start__uml_helpers || !__stop__uml_helpers ||
-+	    __stop__uml_helpers <= __start__uml_helpers)
-+		return;
-+
-+	p   = (const unsigned char *)__start__uml_helpers;
-+	end = (const unsigned char *)__stop__uml_helpers;
-+
-+	if (end - p < 8 || memcmp(p, "UMLH", 4) != 0)
-+		return;
-+
-+	count = rd_le32(p + 4);
-+	p += 8;
-+
-+	snprintf(uml_helpers_dir, sizeof(uml_helpers_dir), "/tmp/uml-%s", umid);
-+	mkdir(uml_helpers_dir, 0700);
-+
-+	for (i = 0; i < count && p < end; i++) {
-+		const char *name = (const char *)p;
-+		size_t namelen = strlen(name);
-+		__u32 csize;
-+		uLong dstlen;
-+		Bytef *dst;
-+
-+		p += namelen + 1;
-+		if (p + 4 > end) break;
-+		csize = rd_le32(p); p += 4;
-+		if (p + csize > end) break;
-+
-+		dstlen = 8 * 1024 * 1024;
-+		dst = malloc(dstlen);
-+		if (!dst) { p += csize; continue; }
-+
-+		if (uncompress(dst, &dstlen, p, csize) == Z_OK) {
-+			snprintf(path, sizeof(path), "%s/%s",
-+				 uml_helpers_dir, name);
-+			fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0755);
-+			if (fd >= 0) {
-+				write(fd, dst, dstlen);
-+				close(fd);
-+			}
-+		}
-+		free(dst);
-+		p += csize;
-+	}
-+
-+	/* Set env vars for kernel drivers */
-+	snprintf(path, sizeof(path), "%s/port-helper", uml_helpers_dir);
-+	if (access(path, X_OK) == 0)
-+		setenv("UML_PORT_HELPER", path, 1);
-+
-+	snprintf(path, sizeof(path), "%s/uml_watchdog", uml_helpers_dir);
-+	if (access(path, X_OK) == 0)
-+		setenv("UML_WATCHDOG", path, 1);
-+
-+	/* Prepend helpers dir to PATH so run_helper() / execvp() finds them */
-+	{
-+		const char *old = getenv("PATH");
-+		char newp[512];
-+		snprintf(newp, sizeof(newp), "%s:%s", uml_helpers_dir,
-+			 old ? old : "/usr/local/bin:/usr/bin:/bin");
-+		setenv("PATH", newp, 1);
-+	}
++	/* Helpers are provided externally via PATH or env vars.
++	 * Set uml_helpers_dir to empty — helpers found via execvp PATH lookup. */
++	(void)umid;
 +}
 +
 +void uml_helpers_cleanup(void)
 +{
-+	char cmd[320];
-+	if (uml_helpers_dir[0]) {
-+		snprintf(cmd, sizeof(cmd), "rm -rf %s", uml_helpers_dir);
-+		system(cmd);
-+	}
++	/* Nothing to clean up — no embedded helpers extracted. */
 +}
 --- a/arch/um/os-Linux/main.c
 +++ b/arch/um/os-Linux/main.c
