@@ -87,7 +87,7 @@ log "Copying arch/arm64/um port files..."
 cp -r "$REPO_ROOT/arch/arm64/Makefile.um" "$SRC_DIR/arch/arm64/"
 cp -r "$REPO_ROOT/arch/arm64/um"          "$SRC_DIR/arch/arm64/"
 cp -r "$REPO_ROOT/arch/um/configs"        "$SRC_DIR/arch/um/"
-cp    "$REPO_ROOT/arch/um/os-Linux/helpers_embed.c" "$SRC_DIR/arch/um/os-Linux/"
+cp    "$REPO_ROOT/arch/um/os-Linux/helpers_embed_user.c" "$SRC_DIR/arch/um/os-Linux/"
 
 log "Applying patches to existing kernel files..."
 for p in "$PATCH_DIR"/0*.patch; do
@@ -337,7 +337,7 @@ fi
 
 # ── Embed helpers into kernel ELF via objcopy ────────────────────────────────
 # Injects .uml_helpers section — linker symbols __uml_helpers_start/end
-# are referenced by arch/um/os-Linux/helpers_embed.c at runtime.
+# are referenced by arch/um/os-Linux/helpers_embed_user.c at runtime.
 UML_BIN_SRC=$(find "$BUILD_DIR" -maxdepth 1 \( -name "linux" -o -name "vmlinux" \) 2>/dev/null | head -1)
 [[ -z "$UML_BIN_SRC" ]] && die "UML binary not found after build"
 

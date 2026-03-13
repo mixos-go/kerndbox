@@ -1,11 +1,11 @@
 From: kerndbox <kerndbox@mixos.io>
 Subject: [PATCH] um: add helpers_embed stub to os-Linux
 
-Add helpers_embed.c as userspace object (USER_OBJS) so it compiles
+Add helpers_embed_user.c as userspace object (USER_OBJS) so it compiles
 with USER_CFLAGS — gives access to libc stdio.h/stdlib.h.
 Without USER_OBJS, kernel -nostdinc flags block stdio.h.
 
-helpers_embed.c is a no-op stub; copied to SRC_DIR by build script.
+helpers_embed_user.c is a no-op stub; copied to SRC_DIR by build script.
 
 --- a/arch/um/os-Linux/Makefile
 +++ b/arch/um/os-Linux/Makefile
@@ -14,7 +14,7 @@ helpers_embed.c is a no-op stub; copied to SRC_DIR by build script.
  obj-y = execvp.o file.o helper.o irq.o main.o mem.o process.o \
  	registers.o sigio.o signal.o start_up.o time.o tty.o \
 -	umid.o user_syms.o util.o drivers/ skas/
-+	umid.o user_syms.o util.o helpers_embed.o drivers/ skas/
++	umid.o user_syms.o util.o helpers_embed_user.o drivers/ skas/
  
  CFLAGS_signal.o += -Wframe-larger-than=4096
  
@@ -23,7 +23,7 @@ helpers_embed.c is a no-op stub; copied to SRC_DIR by build script.
  USER_OBJS := $(user-objs-y) elf_aux.o execvp.o file.o helper.o irq.o \
  	main.o mem.o process.o registers.o sigio.o signal.o start_up.o time.o \
 -	tty.o umid.o util.o
-+	tty.o umid.o util.o helpers_embed.o
++	tty.o umid.o util.o helpers_embed_user.o
  
  include $(srctree)/arch/um/scripts/Makefile.rules
 --- a/arch/um/os-Linux/main.c
