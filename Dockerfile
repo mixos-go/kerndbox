@@ -39,6 +39,7 @@ RUN apt-get update -qq && \
       ca-certificates \
       # boot test helpers
       file \
+      python3 \
       # rootfs build
       debootstrap \
       qemu-user-static \

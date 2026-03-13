@@ -103,7 +103,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     container:
       image: debian:bookworm
-      options: --privileged --tmpfs /dev/shm:exec,size=512m
+      options: --privileged --security-opt seccomp=unconfined --tmpfs /dev/shm:exec,size=512m
     strategy:
       matrix: ${{ fromJson(needs.resolve-tags.outputs.matrix) }}
       fail-fast: false

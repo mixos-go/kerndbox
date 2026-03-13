@@ -132,13 +132,23 @@ jobs:
           merge-multiple: true
           path: ./output
 
+      - name: Delete existing release and tag (if any)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="bootstrap-${{ github.event.inputs.version }}"
+          # Delete release if exists (ignore errors)
+          gh release delete "$TAG" --repo ${{ github.repository }} --yes 2>/dev/null || true
+          # Delete tag on remote
+          git push origin ":refs/tags/$TAG" 2>/dev/null || true
+
       - name: Create tag
         run: |
           TAG="bootstrap-${{ github.event.inputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "$TAG" 2>/dev/null || true
-          git push origin "$TAG" 2>/dev/null || true
+          git tag -f "$TAG"
+          git push origin "$TAG" --force
 
       - name: Publish rootfs
         uses: softprops/action-gh-release@v2
