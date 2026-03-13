@@ -235,7 +235,7 @@ make -C "$SRC_DIR" O="$BUILD_DIR" "${MAKE_VARS[@]}" $J
 # Compile ALL helpers as static binaries for embedding inside kernel ELF.
 # Kernel-called (MUST embed): port-helper, uml_watchdog
 # Operator tools (convenience): uml_mconsole, uml_mkcow, tunctl
-# uml_switch comes from kernel tools/uml/ (built separately below)
+# uml_switch comes from uml-utilities package (apt install uml-utilities)
 log "Building UML helper utilities (static)..."
 HELPERS_SRC="$REPO_ROOT/src/uml-helpers"
 HELPERS_BUILD="$BUILD_DIR/uml-helpers"
@@ -250,17 +250,17 @@ for helper in port-helper uml_watchdog uml_mconsole uml_mkcow tunctl; do
         || log "  WARNING: $helper build failed"
 done
 
-# uml_switch: built directly from tools/uml/ subdir (bypass top-level kernel
-# Makefile to avoid syncconfig flood and wrong 'tools/uml' target name).
-log "Building uml_switch (tools/uml)..."
-mkdir -p "$BUILD_DIR/tools/uml"
-make -C "$SRC_DIR/tools/uml" OUTPUT="$BUILD_DIR/tools/uml/" $J \
-    || log "WARNING: tools/uml build failed (uml_switch will be absent)"
-SW_SRC=$(find "$BUILD_DIR/tools/uml" "$SRC_DIR/tools/uml" -name "uml_switch" -type f 2>/dev/null | head -1)
+# uml_switch: part of uml-utilities package, NOT in Linux kernel source tree.
+# Install via apt and copy the binary.
+log "Getting uml_switch (from uml-utilities)..."
+apt-get install -y uml-utilities 2>/dev/null || true
+SW_SRC=$(command -v uml_switch 2>/dev/null || find /usr/bin /usr/sbin /usr/local/bin -name "uml_switch" -type f 2>/dev/null | head -1)
 if [[ -n "$SW_SRC" ]]; then
     cp "$SW_SRC" "$HELPERS_BUILD/uml_switch"
     strip "$HELPERS_BUILD/uml_switch" 2>/dev/null || true
     log "  → uml_switch ($(du -sh "$HELPERS_BUILD/uml_switch" | cut -f1))"
+else
+    log "WARNING: uml_switch not found (will be absent)"
 fi
 
 # Pack all helpers into one .uml_helpers bundle

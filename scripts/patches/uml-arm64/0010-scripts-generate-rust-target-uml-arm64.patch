@@ -9,20 +9,9 @@ When ARCH=um SUBARCH=arm64, auto.conf sets CONFIG_UML_ARM64=y but NOT
 CONFIG_ARM64 (SRCARCH=um, not arm64). So we must check UML_ARM64, not
 ARM64, to detect this case.
 
-The UML arm64 target:
-  - llvm-target: aarch64-linux-gnu (Linux userspace, not bare-metal)
-  - features: -neon,-sve,-sve2,-fp-armv8 (UML kernel code must not use
-    SIMD; host kernel controls FP/SIMD context)
-  - data-layout: standard aarch64 LP64 layout
-  - relocation-model: pic (UML is a position-independent executable)
-
-Without this, CONFIG_RUST=y on UML arm64 panics during target.json
-generation with "Unsupported architecture".
-
 --- a/scripts/generate_rust_target.rs
 +++ b/scripts/generate_rust_target.rs
-@@ -185,6 +185,26 @@
- 
+@@ -186,6 +186,25 @@
      // `llvm-target`s are taken from `scripts/Makefile.clang`.
      if cfg.has("ARM64") {
          panic!("arm64 uses the builtin rustc aarch64-unknown-none target");
