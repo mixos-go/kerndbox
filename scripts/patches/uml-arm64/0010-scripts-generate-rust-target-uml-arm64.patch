@@ -26,7 +26,7 @@ ARM64, to detect this case.
 +        );
 +        // Disable NEON/SVE: UML kernel code runs in a Linux process context.
 +        // The host kernel owns FP/SIMD state; using NEON here would corrupt it.
-+        let features = "-neon,-sve,-sve2,-fp-armv8".to_string();
++        let features = "-neon,-sve,-sve2".to_string();
 +        ts.push("features", features);
 +        ts.push("llvm-target", "aarch64-linux-gnu");
 +        if cfg.rustc_version_atleast(1, 91, 0) {
