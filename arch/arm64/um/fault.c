@@ -4,30 +4,14 @@
  *
  * arm64 UML exception table fixup.
  *
- * When the kernel faults on a user memory access (copy_to/from_user, etc.),
- * UML's trap handler calls arch_fixup() to redirect PC to the fixup handler
- * listed in the kernel's exception table.
- *
- * arm64 exception tables use RELATIVE offsets (ARCH_HAS_RELATIVE_EXTABLE):
- *   struct exception_table_entry { int insn, fixup; short type, data; }
- *   absolute_fixup = (unsigned long)&entry->fixup + entry->fixup
- *
- * Without this: kernel panics instead of returning -EFAULT to the caller.
- * This affects ALL syscalls that touch user memory (read, write, etc.).
+ * arm64 uses ARCH_HAS_RELATIVE_EXTABLE:
+ *   struct exception_table_entry { int insn; int fixup; short type; short data; }
+ * Both insn and fixup are RELATIVE offsets from their own address.
  */
 
 #include <arch.h>
 #include <sysdep/ptrace.h>
-
-/* arm64 uses RELATIVE extable entries (ARCH_HAS_RELATIVE_EXTABLE) */
-struct exception_table_entry {
-	unsigned long insn;
-	unsigned long fixup;
-	short type;
-	short data;
-};
-
-#include <linux/extable.h> /* search_exception_tables() */
+#include <linux/extable.h>
 
 int arch_fixup(unsigned long address, struct uml_pt_regs *regs)
 {
@@ -36,12 +20,11 @@ int arch_fixup(unsigned long address, struct uml_pt_regs *regs)
 	entry = search_exception_tables(address);
 	if (entry) {
 		/*
-		 * arm64 extable uses relative offsets (ARCH_HAS_RELATIVE_EXTABLE).
-		 * Compute absolute fixup address:
-		 *   abs = (ulong)&entry->fixup + entry->fixup
+		 * arm64 ARCH_HAS_RELATIVE_EXTABLE: fixup field is a
+		 * signed 32-bit offset relative to &entry->fixup itself.
 		 */
 		unsigned long abs_fixup = (unsigned long)&entry->fixup +
-					  (unsigned long)(long)entry->fixup;
+					  (long)entry->fixup;
 		UPT_IP(regs) = abs_fixup;
 		return 1;
 	}

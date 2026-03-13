@@ -9,7 +9,7 @@ KBUILD_RUSTFLAGS += -Ctarget-feature=-neon,-sve,-sve2
 # and needs a custom Linux target.
 KBUILD_RUSTFLAGS += --target=$(objtree)/scripts/target.json
 
-START := 0x100000
+START := 0x60000000
 
 ELF_ARCH   := aarch64
 ELF_FORMAT := elf64-littleaarch64

@@ -61,7 +61,13 @@ struct linux_binprm;
 extern int arch_setup_additional_pages(struct linux_binprm *bprm, int uses_interp);
 
 #define ELF_EXEC_PAGESIZE   PAGE_SIZE
-#define ELF_ET_DYN_BASE     (TASK_SIZE / 3 * 2)
+/*
+ * ELF_ET_DYN_BASE: where the dynamic linker places PIE executables.
+ * Must stay below 0x4000000000 (256 GB) to avoid Android library regions.
+ * TASK_SIZE/3*2 formula gives ~341 GB on 39-bit host — too high.
+ * Fixed at 8 GB: above UML binary+guest RAM (~2 GB), well below 256 GB.
+ */
+#define ELF_ET_DYN_BASE     0x200000000UL
 
 #define elf_check_arch(x)  ((x)->e_machine == EM_AARCH64)
 
