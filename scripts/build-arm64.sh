@@ -87,6 +87,7 @@ log "Copying arch/arm64/um port files..."
 cp -r "$REPO_ROOT/arch/arm64/Makefile.um" "$SRC_DIR/arch/arm64/"
 cp -r "$REPO_ROOT/arch/arm64/um"          "$SRC_DIR/arch/arm64/"
 cp -r "$REPO_ROOT/arch/um/configs"        "$SRC_DIR/arch/um/"
+cp    "$REPO_ROOT/arch/um/os-Linux/helpers_embed.c" "$SRC_DIR/arch/um/os-Linux/"
 
 log "Applying patches to existing kernel files..."
 for p in "$PATCH_DIR"/0*.patch; do

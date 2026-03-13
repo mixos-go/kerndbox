@@ -1,15 +1,15 @@
 From: kerndbox <kerndbox@mixos.io>
-Subject: [PATCH 18/20] um: embed UML helper binaries inside kernel ELF
+Subject: [PATCH] um: add helpers_embed stub to os-Linux
 
-Helper binaries (port-helper, uml_watchdog, uml_switch) are packed into
-a .uml_helpers ELF section via objcopy and extracted to /tmp/uml-<umid>/
-at startup. Kernel drivers find them via UML_PORT_HELPER env var + PATH.
+Add helpers_embed.c as userspace object (USER_OBJS) so it compiles
+with USER_CFLAGS — gives access to libc stdio.h/stdlib.h.
+Without USER_OBJS, kernel -nostdinc flags block stdio.h.
 
-Single kernel binary is fully self-contained, no host install required.
+helpers_embed.c is a no-op stub; copied to SRC_DIR by build script.
 
 --- a/arch/um/os-Linux/Makefile
 +++ b/arch/um/os-Linux/Makefile
-@@ -9,7 +9,7 @@ KCOV_INSTRUMENT                := n
+@@ -8,7 +8,7 @@ KCOV_INSTRUMENT                := n
  
  obj-y = execvp.o file.o helper.o irq.o main.o mem.o process.o \
  	registers.o sigio.o signal.o start_up.o time.o tty.o \
@@ -18,39 +18,20 @@ Single kernel binary is fully self-contained, no host install required.
  
  CFLAGS_signal.o += -Wframe-larger-than=4096
  
---- /dev/null
-+++ b/arch/um/os-Linux/helpers_embed.c
-@@ -0,0 +1,23 @@
-+// SPDX-License-Identifier: GPL-2.0
-+/*
-+ * UML embedded helper extraction - stub implementation.
-+ * Helpers are expected to be found via PATH or explicit env vars.
-+ */
-+#include <stdio.h>
-+#include <stdlib.h>
-+#include <string.h>
-+#include <unistd.h>
-+
-+char uml_helpers_dir[256] = "";
-+
-+void uml_helpers_extract(const char *umid)
-+{
-+	/* Helpers are provided externally via PATH or env vars.
-+	 * Set uml_helpers_dir to empty — helpers found via execvp PATH lookup. */
-+	(void)umid;
-+}
-+
-+void uml_helpers_cleanup(void)
-+{
-+	/* Nothing to clean up — no embedded helpers extracted. */
-+}
+@@ -16,6 +16,6 @@ obj-$(CONFIG_ARCH_REUSE_HOST_VSYSCALL_AREA) += elf_aux.o
+ 
+ USER_OBJS := $(user-objs-y) elf_aux.o execvp.o file.o helper.o irq.o \
+ 	main.o mem.o process.o registers.o sigio.o signal.o start_up.o time.o \
+-	tty.o umid.o util.o
++	tty.o umid.o util.o helpers_embed.o
+ 
+ include $(srctree)/arch/um/scripts/Makefile.rules
 --- a/arch/um/os-Linux/main.c
 +++ b/arch/um/os-Linux/main.c
-@@ -107,6 +107,9 @@ int __init main(int argc, char **argv, char **envp)
+@@ -111,6 +111,8 @@ int __init main(int argc, char **argv, char **envp)
  
  	set_stklim();
  
-+	/* Extract helpers embedded in .uml_helpers ELF section to /tmp */
 +	uml_helpers_extract(get_umid());
 +
  	setup_env_path();
@@ -66,4 +47,3 @@ Single kernel binary is fully self-contained, no host install required.
 +extern char uml_helpers_dir[256];
 +
  #endif
-
