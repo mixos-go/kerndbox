@@ -1,0 +1,16 @@
+From: kerndbox <kerndbox@mixos.io>
+Subject: [PATCH] um: skas: add missing prototype for handle_syscall
+
+handle_syscall() is declared in skas/skas.h but syscall.c does not
+include it, causing -Wmissing-prototypes warning.
+
+--- a/arch/um/kernel/skas/syscall.c
++++ b/arch/um/kernel/skas/syscall.c
+@@ -13,6 +13,7 @@
+ #include <sysdep/ptrace.h>
+ #include <sysdep/ptrace_user.h>
+ #include <sysdep/syscalls.h>
++#include <skas/skas.h>
+ #include <linux/time-internal.h>
+ #include <asm/unistd.h>
+ #include <asm/delay.h>
