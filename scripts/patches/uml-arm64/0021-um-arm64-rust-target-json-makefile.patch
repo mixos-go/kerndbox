@@ -7,7 +7,7 @@ Subject: [PATCH] scripts,rust: generate target.json for UML arm64
  hostprogs-always-$(CONFIG_RUST_KERNEL_DOCTESTS)		+= rustdoc_test_gen
  
 -ifneq ($(or $(CONFIG_X86_64),$(CONFIG_X86_32)),)
-+ifneq ($(or $(CONFIG_X86_64),$(CONFIG_X86_32),$(and $(CONFIG_ARM64),$(CONFIG_UML))),)
++ifneq ($(or $(CONFIG_X86_64),$(CONFIG_X86_32),$(CONFIG_UML_ARM64)),)
  always-$(CONFIG_RUST)					+= target.json
  filechk_rust_target = $< < include/config/auto.conf
  
@@ -19,7 +19,7 @@ Subject: [PATCH] scripts,rust: generate target.json for UML arm64
      $(wildcard $(objtree)/include/config/RUSTC_VERSION_TEXT) FORCE
  	+$(call if_changed_rule,rustc_library)
 -ifneq ($(or $(CONFIG_X86_64),$(CONFIG_X86_32)),)
-+ifneq ($(or $(CONFIG_X86_64),$(CONFIG_X86_32),$(and $(CONFIG_ARM64),$(CONFIG_UML))),)
++ifneq ($(or $(CONFIG_X86_64),$(CONFIG_X86_32),$(CONFIG_UML_ARM64)),)
  $(obj)/core.o: scripts/target.json
  endif
  

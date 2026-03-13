@@ -302,11 +302,12 @@ for helper in port-helper uml_watchdog uml_mconsole uml_mkcow tunctl; do
         || log "  WARNING: $helper build failed"
 done
 
-# uml_switch: built from kernel source (tools/uml/) to match kernel version
+# uml_switch: built directly from tools/uml/ subdir (bypass top-level kernel
+# Makefile to avoid syncconfig flood and wrong 'tools/uml' target name).
 log "Building uml_switch (tools/uml)..."
-# tools/uml builds uml_switch for the HOST arch (no ARCH=um needed)
-make -C "$SRC_DIR" O="$BUILD_DIR" tools/uml $J || log "WARNING: tools/uml build failed (uml_switch will be absent)"
-# tools/uml dengan O= akan output ke BUILD_DIR/tools/uml/
+mkdir -p "$BUILD_DIR/tools/uml"
+make -C "$SRC_DIR/tools/uml" OUTPUT="$BUILD_DIR/tools/uml/" $J \
+    || log "WARNING: tools/uml build failed (uml_switch will be absent)"
 SW_SRC=$(find "$BUILD_DIR/tools/uml" "$SRC_DIR/tools/uml" -name "uml_switch" -type f 2>/dev/null | head -1)
 if [[ -n "$SW_SRC" ]]; then
     cp "$SW_SRC" "$HELPERS_BUILD/uml_switch"
