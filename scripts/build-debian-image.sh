@@ -80,11 +80,27 @@ build_rootfs() {
     fi
 
     log "Running debootstrap ($deb_arch)..."
+    # Pre-mount /proc so debootstrap stage 2 can run package scripts.
+    # Without this, chroot scripts fail silently and bash/libc are not configured.
+    mkdir -p "$work_dir/proc" "$work_dir/sys" "$work_dir/dev"
+    mount -t proc  proc   "$work_dir/proc" || true
+    mount -t sysfs sysfs  "$work_dir/sys"  || true
+    mount --bind   /dev   "$work_dir/dev"  || true
+
     debootstrap \
         --arch="$deb_arch" \
-        --include="openssh-server,curl,socat,sudo,bash,zsh,coreutils,util-linux,net-tools,iproute2,procps,less,vim-tiny,ca-certificates,wget,gcc,g++,make,libc6-dev,libc-dev-bin,musl-tools,musl-dev,binutils,pkg-config,libssl-dev" \
+        --include="openssh-server,curl,socat,sudo,bash,zsh,busybox-static,coreutils,util-linux,net-tools,iproute2,procps,less,vim-tiny,ca-certificates,wget,gcc,g++,make,libc6-dev,libc-dev-bin,musl-tools,musl-dev,binutils,pkg-config,libssl-dev" \
         "$DEBIAN_SUITE" "$work_dir" "https://deb.debian.org/debian"
-    log "debootstrap done"
+
+    umount "$work_dir/proc" 2>/dev/null || true
+    umount "$work_dir/sys"  2>/dev/null || true
+    umount "$work_dir/dev"  2>/dev/null || true
+
+    # Validate rootfs is complete
+    if [ ! -x "$work_dir/bin/bash" ] && [ ! -x "$work_dir/usr/bin/bash" ]; then
+        die "debootstrap incomplete: /bin/bash missing — stage 2 likely failed"
+    fi
+    log "debootstrap done ✓ (bash: $(ls -la $work_dir/bin/bash 2>/dev/null || ls -la $work_dir/usr/bin/bash))"
 
     # Step 2: configure rootfs
     log "Configuring rootfs..."

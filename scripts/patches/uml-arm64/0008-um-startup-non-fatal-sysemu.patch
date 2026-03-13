@@ -1,12 +1,12 @@
-Subject: [PATCH 8/13] um/os-Linux/start_up.c: arm64 compat for check_ptrace + non-fatal sysemu
+Subject: [PATCH] um/os-Linux/start_up.c: arm64 compat + non-fatal PTRACE_SET_SYSCALL
 
 arm64 cannot use PTRACE_PEEKUSER/POKEUSER. Adds arm64_check_ptrace() using
-PTRACE_GETREGSET/PTRACE_SET_SYSCALL. Makes sysemu failure non-fatal.
-Adds stdbool.h include and extern arch_prctl_defaults() for arm64.
-Calls arm64_check_ptrace() from check_ptrace() on arm64 (early return).
+PTRACE_GETREGSET. Makes PTRACE_SET_SYSCALL failure non-fatal — some VM
+environments (GitHub Actions arm64/AWS Graviton) return EIO for this request.
+arm64_neutralize_syscall in skas/process.c handles the fallback via PTRACE_SETREGSET.
 
---- a/arch/um/os-Linux/start_up.c	2026-03-11 17:44:22.707379804 +0000
-+++ b/arch/um/os-Linux/start_up.c	2026-03-11 17:44:01.002245148 +0000
+--- a/arch/um/os-Linux/start_up.c
++++ b/arch/um/os-Linux/start_up.c
 @@ -17,7 +17,9 @@
  #include <sys/wait.h>
  #include <sys/time.h>
@@ -17,7 +17,7 @@ Calls arm64_check_ptrace() from check_ptrace() on arm64 (early return).
  #include <asm/unistd.h>
  #include <init.h>
  #include <os.h>
-@@ -27,6 +29,17 @@
+@@ -27,6 +29,19 @@
  #include <registers.h>
  #include <skas.h>
  #include "internal.h"
@@ -25,6 +25,8 @@ Calls arm64_check_ptrace() from check_ptrace() on arm64 (early return).
 +#include <sys/uio.h>
 +#include <elf.h>
 +#include <stdbool.h>
++#include <string.h>
++#include <errno.h>
 +#ifndef PTRACE_SET_SYSCALL
 +#define PTRACE_SET_SYSCALL 23
 +#endif
@@ -35,11 +37,10 @@ Calls arm64_check_ptrace() from check_ptrace() on arm64 (early return).
  
  static void ptrace_child(void)
  {
-@@ -184,10 +197,73 @@
+@@ -184,9 +199,77 @@
  	fatal("missing\n");
  }
  
-+
 +#ifdef __aarch64__
 +static void __init arm64_check_ptrace(void)
 +{
@@ -73,7 +74,6 @@ Calls arm64_check_ptrace() from check_ptrace() on arm64 (early return).
 +
 +		if (WSTOPSIG(status) != (SIGTRAP | 0x80))
 +			continue;
-+
 +		if (found)
 +			continue;
 +
@@ -85,8 +85,16 @@ Calls arm64_check_ptrace() from check_ptrace() on arm64 (early return).
 +		nr = regs[8];
 +		if (nr == __NR_getpid) {
 +			if (ptrace(PTRACE_SET_SYSCALL, pid, 0,
-+				   (void *)(unsigned long)__NR_getppid) < 0)
-+				fatal_perror("arm64_check_ptrace: PTRACE_SET_SYSCALL failed");
++				   (void *)(unsigned long)__NR_getppid) < 0) {
++				/* Not fatal — some VM environments (e.g. GitHub Actions
++				 * arm64) return EIO for PTRACE_SET_SYSCALL.
++				 * arm64_neutralize_syscall uses PTRACE_SETREGSET fallback. */
++				non_fatal("arm64_check_ptrace: PTRACE_SET_SYSCALL unavailable"
++					  " (%s) — using PTRACE_SETREGSET fallback\n",
++					  strerror(errno));
++				stop_ptraced_child(pid, 0);
++				return;
++			}
 +			found = true;
 +		}
 +	}
@@ -96,27 +104,24 @@ Calls arm64_check_ptrace() from check_ptrace() on arm64 (early return).
 +}
 +#endif /* __aarch64__ */
 +
++
  static void __init check_ptrace(void)
  {
  	int pid, syscall, n, status;
- 
 +#ifdef __aarch64__
-+	/* arm64 cannot use PTRACE_PEEKUSER/POKEUSER — use dedicated check */
 +	arm64_check_ptrace();
 +	return;
 +#endif
-+
+ 
  	os_info("Checking that ptrace can change system call numbers...");
  	pid = start_ptraced_child();
- 
-@@ -283,6 +359,10 @@
+@@ -283,6 +366,9 @@
  {
  	int pid;
  
 +#ifdef __aarch64__
 +	arch_prctl_defaults();
 +#endif
-+
  	/* Print out the core dump limits early */
  	check_coredump_limit();
  
