@@ -38,3 +38,10 @@ archheaders:
 	$(Q)$(MAKE) $(build)=arch/arm64/tools kapi
 
 include $(srctree)/arch/um/scripts/Makefile.rules
+
+# Suppress large frame warning for signal handlers (fpsimd context is large by design)
+CFLAGS_signal.o += -Wframe-larger-than=2048
+
+# Pull in arm64 optimized string routines so modules can resolve
+# memcpy/memset/memmove — same pattern as arch/x86/um/Makefile subarch-y
+subarch-y += ../lib/memcpy.o ../lib/memset.o ../lib/memmove.o
