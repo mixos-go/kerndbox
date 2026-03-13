@@ -14,4 +14,5 @@ START := 0x60000000
 ELF_ARCH   := aarch64
 ELF_FORMAT := elf64-littleaarch64
 
-LINK-y += -m aarch64linux
+# -m aarch64linux is an ld emulation flag — pass via KBUILD_LDFLAGS (-Wl,-m,...)
+KBUILD_LDFLAGS += -m aarch64linux

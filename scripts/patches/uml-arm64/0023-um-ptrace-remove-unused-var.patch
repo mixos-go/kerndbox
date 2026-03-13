@@ -1,0 +1,15 @@
+From: kerndbox <kerndbox@mixos.io>
+Subject: [PATCH] um: ptrace: remove unused variable 'i' in arch_ptrace
+
+Variable 'i' is declared but never used on arm64, causing
+-Wunused-variable warning.
+
+--- a/arch/um/kernel/ptrace.c
++++ b/arch/um/kernel/ptrace.c
+@@ -38,7 +38,7 @@ long arch_ptrace(struct task_struct *child, long request,
+ 		 unsigned long addr, unsigned long data)
+ {
+-	int i, ret;
++	int ret;
+ 	unsigned long __user *p = (void __user *)data;
+ 	void __user *vp = p;
