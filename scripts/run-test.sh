@@ -166,7 +166,7 @@ log "=== Booting UML ==="
     rootfstype=ext4 \
     rw \
     mem=64M \
-    init=/sbin/init \
+    init=/bin/busybox \
     umid="$UMID" \
     "mconsole=notify:${NOTIFY_SOCK}" \
     con=fd:0,fd:1 \
@@ -213,6 +213,10 @@ if echo "$NOTIFY_OUT" | grep -q "^TIMEOUT:"; then
         log "syscall:"
         cat /proc/"$UML_PID"/syscall 2>/dev/null | sed 's/^/  /' || true
         log "children:"
+        if [[ "$ARCH" == "arm64" ]] && [[ -f /tmp/uml-strace.log ]]; then
+            log "=== Last strace lines ==="
+            tail -20 /tmp/uml-strace.log | sed "s/^/  /" || true
+        fi
         ls /proc/"$UML_PID"/task/ 2>/dev/null | wc -l | sed 's/^/  threads: /' || true
         # Check child processes too
         for child in $(cat /proc/"$UML_PID"/task/*/children 2>/dev/null | tr " " "\n" | sort -u); do
