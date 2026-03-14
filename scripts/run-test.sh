@@ -165,7 +165,8 @@ log "=== Booting UML ==="
     root=/dev/ubda \
     rootfstype=ext4 \
     rw \
-    mem=512M \
+    mem=128M \
+    highmem=0 \
     init=/sbin/init \
     umid="$UMID" \
     "mconsole=notify:${NOTIFY_SOCK}" \
