@@ -231,42 +231,44 @@ make -C "$SRC_DIR" O="$BUILD_DIR" "${MAKE_VARS[@]}" olddefconfig
 log "Compiling UML kernel (~5 min)..."
 make -C "$SRC_DIR" O="$BUILD_DIR" "${MAKE_VARS[@]}" $J
 
-# ── Build UML helper utilities (static) ─────────────────────────────────────
-# Compile ALL helpers as static binaries for embedding inside kernel ELF.
-# Kernel-called (MUST embed): port-helper, uml_watchdog
-# Operator tools (convenience): uml_mconsole, uml_mkcow, tunctl
-# uml_switch comes from uml-utilities package (apt install uml-utilities)
-log "Building UML helper utilities (static)..."
-HELPERS_SRC="$REPO_ROOT/src/uml-helpers"
+# ── Build UML helper utilities ───────────────────────────────────────────────
+# Tools in src/uml-tools/ (Rust workspace). Build with cargo if available.
+log "Building UML helper utilities..."
+HELPERS_SRC="$REPO_ROOT/src/uml-tools"
 HELPERS_BUILD="$BUILD_DIR/uml-helpers"
 mkdir -p "$HELPERS_BUILD"
 
-for helper in port-helper uml_watchdog uml_mconsole uml_mkcow tunctl; do
-    gcc -O2 -static -fno-pie -no-pie \
-        -o "$HELPERS_BUILD/$helper" \
-        "$HELPERS_SRC/${helper}.c" 2>/dev/null && \
-        strip "$HELPERS_BUILD/$helper" && \
-        log "  → $helper ($(du -sh "$HELPERS_BUILD/$helper" | cut -f1))" \
-        || log "  WARNING: $helper build failed"
-done
+# Try cargo build (x86_64 target)
+if command -v cargo >/dev/null 2>&1; then
+    log "  Building Rust tools with cargo..."
+    (
+        cd "$HELPERS_SRC"
+        cargo build --release 2>&1 | sed "s/^/  [cargo] /" || true
+        CARGO_OUT="$HELPERS_SRC/target/release"
+        for bin in port_helper uml_watchdog uml_mconsole uml_mkcow tunctl uml_switch; do
+            [ -f "$CARGO_OUT/$bin" ] && cp "$CARGO_OUT/$bin" "$HELPERS_BUILD/" && \
+                log "  → $bin ($(du -sh "$HELPERS_BUILD/$bin" | cut -f1))"
+        done
+    ) || log "  WARNING: cargo build failed"
+fi
 
-# uml_switch: part of uml-utilities package, NOT in Linux kernel source tree.
-# Install via apt and copy the binary.
-log "Getting uml_switch (from uml-utilities)..."
+# uml_switch fallback from apt
+log "Getting uml_switch..."
 apt-get install -y uml-utilities 2>/dev/null || true
-SW_SRC=$(command -v uml_switch 2>/dev/null || find /usr/bin /usr/sbin /usr/local/bin -name "uml_switch" -type f 2>/dev/null | head -1)
+SW_SRC=$(command -v uml_switch 2>/dev/null || \
+    find /usr/bin /usr/sbin /usr/local/bin -name "uml_switch" -type f 2>/dev/null | head -1)
 if [[ -n "$SW_SRC" ]]; then
     cp "$SW_SRC" "$HELPERS_BUILD/uml_switch"
     strip "$HELPERS_BUILD/uml_switch" 2>/dev/null || true
     log "  → uml_switch ($(du -sh "$HELPERS_BUILD/uml_switch" | cut -f1))"
 else
-    log "WARNING: uml_switch not found (will be absent)"
+    log "WARNING: uml_switch not found"
 fi
 
-# Pack all helpers into one .uml_helpers bundle
+# Pack all helpers
 HELPERS_BIN="$HELPERS_BUILD/uml_helpers.bin"
 HELPERS_ARGS=()
-for b in port-helper uml_watchdog uml_mconsole uml_mkcow tunctl uml_switch; do
+for b in port_helper uml_watchdog uml_mconsole uml_mkcow tunctl uml_switch; do
     [[ -f "$HELPERS_BUILD/$b" ]] && HELPERS_ARGS+=("$HELPERS_BUILD/$b")
 done
 
@@ -274,7 +276,7 @@ if [[ ${#HELPERS_ARGS[@]} -gt 0 ]]; then
     python3 "$HELPERS_SRC/pack_helpers.py" -o "$HELPERS_BIN" "${HELPERS_ARGS[@]}"
     log "Helpers bundle: $(du -sh "$HELPERS_BIN" | cut -f1) (${#HELPERS_ARGS[@]} binaries)"
 else
-    log "WARNING: No helpers to embed"
+    log "WARNING: No helpers to embed — boot will use PATH-based lookup"
 fi
 
 # ── Embed helpers into kernel ELF via objcopy ────────────────────────────────
