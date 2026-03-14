@@ -2,18 +2,17 @@
 #
 # arch/arm64/um/os-Linux/Makefile
 #
-# Preferred: Rust staticlib (libarm64_um_os.a) built by build-arm64.sh.
-# Fallback: C implementations for CI environments without Rust.
+# Host-side (userspace) code for arm64 UML.
+# If Rust staticlib (libarm64_um_os.a) is pre-built by build-arm64.sh,
+# use it. Otherwise fall back to C implementations.
 
-# If Rust staticlib was pre-built and placed here, link it.
-# Otherwise fall back to C files (legacy path).
 RUST_LIB := $(obj)/libarm64_um_os.a
 
 ifneq ($(wildcard $(RUST_LIB)),)
-# Rust path: link staticlib, only need helpers_embed_user.c
+# Rust path — all symbols from staticlib
 EXTRA_LDFLAGS += -L$(obj) -larm64_um_os
-obj-y     := helpers_embed_user.o
-USER_OBJS := helpers_embed_user.o
+obj-y     :=
+USER_OBJS :=
 else
 # C fallback path
 obj-y = registers.o \
@@ -21,8 +20,7 @@ obj-y = registers.o \
         signal.o \
         mcontext.o \
         prctl.o \
-        uaccess.o \
-        helpers_embed_user.o
+        uaccess.o
 
 USER_OBJS := $(obj-y)
 endif

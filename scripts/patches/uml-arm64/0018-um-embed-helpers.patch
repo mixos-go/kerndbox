@@ -9,7 +9,7 @@ helpers_embed_user.c is a no-op stub; copied to SRC_DIR by build script.
 
 --- a/arch/um/os-Linux/Makefile
 +++ b/arch/um/os-Linux/Makefile
-@@ -8,7 +8,7 @@ KCOV_INSTRUMENT                := n
+@@ -8,7 +8,7 @@
  
  obj-y = execvp.o file.o helper.o irq.o main.o mem.o process.o \
  	registers.o sigio.o signal.o start_up.o time.o tty.o \
@@ -18,14 +18,15 @@ helpers_embed_user.c is a no-op stub; copied to SRC_DIR by build script.
  
  CFLAGS_signal.o += -Wframe-larger-than=4096
  
-@@ -16,6 +16,6 @@ obj-$(CONFIG_ARCH_REUSE_HOST_VSYSCALL_AREA) += elf_aux.o
+@@ -16,7 +16,7 @@
  
- USER_OBJS := $(user-objs-y) elf_aux.o execvp.o file.o helper.o irq.o \
+ USER_OBJS := $(user-objs-y) execvp.o file.o helper.o irq.o \
  	main.o mem.o process.o registers.o sigio.o signal.o start_up.o time.o \
 -	tty.o umid.o util.o
 +	tty.o umid.o util.o helpers_embed_user.o
+ # elf_aux.o is only compiled when CONFIG_ARCH_REUSE_HOST_VSYSCALL_AREA=y
+ USER_OBJS += $(if $(CONFIG_ARCH_REUSE_HOST_VSYSCALL_AREA),elf_aux.o)
  
- include $(srctree)/arch/um/scripts/Makefile.rules
 --- a/arch/um/os-Linux/main.c
 +++ b/arch/um/os-Linux/main.c
 @@ -111,6 +111,8 @@ int __init main(int argc, char **argv, char **envp)

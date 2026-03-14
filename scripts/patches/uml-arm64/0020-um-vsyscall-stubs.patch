@@ -2,12 +2,12 @@ Subject: [PATCH] um: add vsyscall stubs for arm64
 
 --- a/arch/um/kernel/Makefile
 +++ b/arch/um/kernel/Makefile
-@@ -17,7 +17,7 @@ extra-y := vmlinux.lds
+@@ -16,7 +16,7 @@
  
  obj-y = config.o exec.o exitcode.o irq.o ksyms.o mem.o \
  	physmem.o process.o ptrace.o reboot.o sigio.o \
 -	signal.o sysrq.o time.o tlb.o trap.o \
--	um_arch.o umid.o kmsg_dump.o capflags.o skas/
 +	signal.o sysrq.o time.o tlb.o trap.o vsyscall_stubs.o \
-+	um_arch.o umid.o kmsg_dump.o capflags.o skas/
+ 	um_arch.o umid.o kmsg_dump.o skas/
  obj-y += load_file.o
+ 
