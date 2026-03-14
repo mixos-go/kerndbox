@@ -105,6 +105,15 @@ build_rootfs() {
     # Step 2: configure rootfs
     log "Configuring rootfs..."
 
+    # Ensure dynamic linker cache is up to date
+    log "Running ldconfig..."
+    chroot "$work_dir" /sbin/ldconfig 2>/dev/null || true
+
+    # Create /sbin/init symlink → bash (fallback if systemd not present)
+    if [ ! -e "$work_dir/sbin/init" ]; then
+        ln -sf /bin/bash "$work_dir/sbin/init" 2>/dev/null || true
+    fi
+
     echo "devbox" > "$work_dir/etc/hostname"
 
     cat > "$work_dir/etc/fstab" << 'FSTAB'

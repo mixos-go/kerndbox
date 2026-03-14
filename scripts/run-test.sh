@@ -166,7 +166,7 @@ log "=== Booting UML ==="
     rootfstype=ext4 \
     rw \
     mem=512M \
-    init=/bin/bash \
+    init=/sbin/init \
     umid="$UMID" \
     "mconsole=notify:${NOTIFY_SOCK}" \
     con=fd:0,fd:1 \
@@ -208,6 +208,16 @@ if echo "$NOTIFY_OUT" | grep -q "^TIMEOUT:"; then
         log "UML masih jalan — ini adalah silent hang"
         log "wchan (apa yang kernel tunggu):"
         cat /proc/"$UML_PID"/wchan 2>/dev/null | sed 's/^/  /' || true
+        log "status:"
+        cat /proc/"$UML_PID"/status 2>/dev/null | grep -E "State|VmRSS|Threads" | sed 's/^/  /' || true
+        log "syscall:"
+        cat /proc/"$UML_PID"/syscall 2>/dev/null | sed 's/^/  /' || true
+        log "children:"
+        ls /proc/"$UML_PID"/task/ 2>/dev/null | wc -l | sed 's/^/  threads: /' || true
+        # Check child processes too
+        for child in $(cat /proc/"$UML_PID"/task/*/children 2>/dev/null | tr " " "\n" | sort -u); do
+            [ -d "/proc/$child" ] && echo "  child $child wchan: $(cat /proc/$child/wchan 2>/dev/null)" || true
+        done
     else
         log "UML sudah exit"
     fi
