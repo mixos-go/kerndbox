@@ -10,10 +10,10 @@
 #include <sysdep/ptrace.h>
 #include "arm64_um_os.h"
 #include <sys/wait.h>
+#include <unistd.h>
 #include <signal.h>
 #include <asm/unistd.h>
 #include <skas.h>
-#include "internal.h"
 
 #ifndef NT_PRSTATUS
 # define NT_PRSTATUS 1
@@ -140,19 +140,36 @@ void arm64_check_ptrace(void)
 	int found = 0;
 
 	os_info("Checking ptrace syscall modification (arm64 PTRACE_SET_SYSCALL)...");
-	pid = start_ptraced_child();
+
+	/* Fork a child to trace */
+	pid = fork();
+	if (pid < 0)
+		fatal_perror("arm64_check_ptrace: fork");
+	if (pid == 0) {
+		/* Child: enable tracing and spin in getpid() */
+		ptrace(PTRACE_TRACEME, 0, NULL, NULL);
+		raise(SIGSTOP);
+		for (n = 0; n < 100; n++)
+			syscall(__NR_getpid);
+		_exit(0);
+	}
+
+	/* Parent: wait for SIGSTOP then trace */
+	CATCH_EINTR(n = waitpid(pid, &status, WUNTRACED));
+	if (n < 0)
+		fatal_perror("arm64_check_ptrace: waitpid");
 
 	if (ptrace(PTRACE_SETOPTIONS, pid, 0,
-		   (void *)PTRACE_O_TRACESYSGOOD) < 0)
-		fatal_perror("arm64_check_ptrace: PTRACE_SETOPTIONS failed");
+		   (void *)(long)PTRACE_O_TRACESYSGOOD) < 0)
+		fatal_perror("arm64_check_ptrace: PTRACE_SETOPTIONS");
 
 	while (1) {
 		if (ptrace(PTRACE_SYSCALL, pid, 0, 0) < 0)
-			fatal_perror("arm64_check_ptrace: PTRACE_SYSCALL failed");
+			fatal_perror("arm64_check_ptrace: PTRACE_SYSCALL");
 
 		CATCH_EINTR(n = waitpid(pid, &status, WUNTRACED));
 		if (n < 0)
-			fatal_perror("arm64_check_ptrace: waitpid failed");
+			fatal_perror("arm64_check_ptrace: waitpid loop");
 
 		if (!WIFSTOPPED(status)) {
 			if (found && WIFEXITED(status) && WEXITSTATUS(status) == 0)
@@ -167,26 +184,23 @@ void arm64_check_ptrace(void)
 		iov.iov_base = regs;
 		iov.iov_len  = sizeof(regs);
 		if (ptrace(PTRACE_GETREGSET, pid, (void *)(long)NT_PRSTATUS, &iov) < 0)
-			fatal_perror("arm64_check_ptrace: PTRACE_GETREGSET failed");
+			fatal_perror("arm64_check_ptrace: PTRACE_GETREGSET");
 
 		nr = regs[8];
 		if (nr == __NR_getpid) {
 			if (ptrace(PTRACE_SET_SYSCALL, pid, 0,
 				   (void *)(unsigned long)__NR_getppid) < 0) {
-				/*
-				 * Non-fatal — PTRACE_SET_SYSCALL unavailable on
-				 * some VM environments (Graviton, GitHub Actions).
-				 * arm64_neutralize_syscall uses PTRACE_SETREGSET fallback.
-				 */
-				non_fatal("arm64_check_ptrace: PTRACE_SET_SYSCALL unavailable"
-					  " (%s) — using PTRACE_SETREGSET fallback\n",
+				non_fatal("arm64_check_ptrace: PTRACE_SET_SYSCALL"
+					  " unavailable (%s) — fallback mode\n",
 					  strerror(errno));
-				stop_ptraced_child(pid, 0);
+				ptrace(PTRACE_DETACH, pid, NULL, NULL);
+				CATCH_EINTR(waitpid(pid, &status, 0));
 				return;
 			}
 			found = 1;
 		}
 	}
 	os_info("OK\n");
-	stop_ptraced_child(pid, 0);
+	ptrace(PTRACE_DETACH, pid, NULL, NULL);
+	CATCH_EINTR(waitpid(pid, &status, 0));
 }
