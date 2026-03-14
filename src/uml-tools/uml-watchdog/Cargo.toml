@@ -1,0 +1,12 @@
+[package]
+name    = "uml-watchdog"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "uml_watchdog"
+path = "src/main.rs"
+
+[dependencies]
+libc = "0.2"

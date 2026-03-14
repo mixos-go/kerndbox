@@ -88,6 +88,8 @@ cp -r "$REPO_ROOT/arch/arm64/Makefile.um" "$SRC_DIR/arch/arm64/"
 cp -r "$REPO_ROOT/arch/arm64/um"          "$SRC_DIR/arch/arm64/"
 cp -r "$REPO_ROOT/arch/um/configs"        "$SRC_DIR/arch/um/"
 cp    "$REPO_ROOT/arch/um/os-Linux/helpers_embed_user.c" "$SRC_DIR/arch/um/os-Linux/"
+cp    "$REPO_ROOT/arch/um/kernel/vsyscall_stubs.c"       "$SRC_DIR/arch/um/kernel/"
+cp    "$REPO_ROOT/arch/arm64/um/mem_exports.c"           "$SRC_DIR/arch/arm64/um/"
 cp    "$REPO_ROOT/arch/arm64/um/mem_exports.c" "$SRC_DIR/arch/arm64/um/"
 
 log "Applying patches to existing kernel files..."

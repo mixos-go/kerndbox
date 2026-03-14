@@ -1,0 +1,21 @@
+[package]
+name    = "arm64-um-os"
+version = "0.1.0"
+edition = "2021"
+
+# Compiled as a static library — symbols exported as extern "C"
+# and linked into the UML kernel binary alongside the C objects.
+[lib]
+name       = "arm64_um_os"
+crate-type = ["staticlib"]
+
+[dependencies]
+libc = { version = "0.2", default-features = false, features = ["extra_traits"] }
+
+[profile.release]
+opt-level = 2
+debug     = false
+panic     = "abort"   # no unwinding in kernel context
+
+[profile.dev]
+panic = "abort"

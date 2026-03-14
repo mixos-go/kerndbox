@@ -1,0 +1,12 @@
+[package]
+name    = "tunctl"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "tunctl"
+path = "src/main.rs"
+
+[dependencies]
+libc = "0.2"

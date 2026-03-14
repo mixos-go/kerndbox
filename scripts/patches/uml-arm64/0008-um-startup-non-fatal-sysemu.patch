@@ -1,9 +1,14 @@
-Subject: [PATCH] um/os-Linux/start_up.c: arm64 compat + non-fatal PTRACE_SET_SYSCALL
+Subject: [PATCH] um/os-Linux/start_up.c: arm64 ptrace check via Rust extern
 
-arm64 cannot use PTRACE_PEEKUSER/POKEUSER. Adds arm64_check_ptrace() using
-PTRACE_GETREGSET. Makes PTRACE_SET_SYSCALL failure non-fatal — some VM
-environments (GitHub Actions arm64/AWS Graviton) return EIO for this request.
-arm64_neutralize_syscall in skas/process.c handles the fallback via PTRACE_SETREGSET.
+arm64 ptrace check and prctl setup are implemented in Rust:
+  arch/arm64/um/os-Linux/rust/src/ptrace.rs  -> arm64_check_ptrace()
+  arch/arm64/um/os-Linux/rust/src/prctl.rs   -> arch_prctl_defaults()
+
+This patch wires them in via extern declarations and adds the arm64
+early-return path in check_ptrace() and arch_prctl_defaults() call
+in os_early_checks().
+
+Removes the large C implementation that was previously inlined here.
 
 --- a/arch/um/os-Linux/start_up.c
 +++ b/arch/um/os-Linux/start_up.c
@@ -17,105 +22,34 @@ arm64_neutralize_syscall in skas/process.c handles the fallback via PTRACE_SETRE
  #include <asm/unistd.h>
  #include <init.h>
  #include <os.h>
-@@ -27,6 +29,19 @@
- #include <registers.h>
+@@ -28,6 +30,14 @@
  #include <skas.h>
  #include "internal.h"
+ 
++/* arm64: ptrace check and prctl functions are in Rust (arch/arm64/um/os-Linux/rust/) */
 +#ifdef __aarch64__
-+#include <sys/uio.h>
-+#include <elf.h>
-+#include <stdbool.h>
-+#include <string.h>
-+#include <errno.h>
-+#ifndef PTRACE_SET_SYSCALL
-+#define PTRACE_SET_SYSCALL 23
-+#endif
++extern void arm64_check_ptrace(void);
 +extern void arch_prctl_defaults(void);
 +#endif
 +
 +int sysemu_supported = 0;
- 
++
  static void ptrace_child(void)
  {
-@@ -184,9 +199,77 @@
- 	fatal("missing\n");
- }
- 
-+#ifdef __aarch64__
-+static void __init arm64_check_ptrace(void)
-+{
-+	int pid, n, status;
-+	unsigned long long regs[34];
-+	struct iovec iov;
-+	unsigned long nr;
-+	bool found = false;
-+
-+	os_info("Checking ptrace syscall modification (arm64 PTRACE_SET_SYSCALL)...");
-+	pid = start_ptraced_child();
-+
-+	if (ptrace(PTRACE_SETOPTIONS, pid, 0,
-+		   (void *) PTRACE_O_TRACESYSGOOD) < 0)
-+		fatal_perror("arm64_check_ptrace: PTRACE_SETOPTIONS failed");
-+
-+	while (1) {
-+		if (ptrace(PTRACE_SYSCALL, pid, 0, 0) < 0)
-+			fatal_perror("arm64_check_ptrace: PTRACE_SYSCALL failed");
-+
-+		CATCH_EINTR(n = waitpid(pid, &status, WUNTRACED));
-+		if (n < 0)
-+			fatal_perror("arm64_check_ptrace: waitpid failed");
-+
-+		if (!WIFSTOPPED(status)) {
-+			if (found && WIFEXITED(status) && WEXITSTATUS(status) == 0)
-+				break;
-+			fatal("arm64_check_ptrace: unexpected child exit, status=0x%x\n",
-+			      status);
-+		}
-+
-+		if (WSTOPSIG(status) != (SIGTRAP | 0x80))
-+			continue;
-+		if (found)
-+			continue;
-+
-+		iov.iov_base = regs;
-+		iov.iov_len  = sizeof(regs);
-+		if (ptrace(PTRACE_GETREGSET, pid, (void *)(long)NT_PRSTATUS, &iov) < 0)
-+			fatal_perror("arm64_check_ptrace: PTRACE_GETREGSET failed");
-+
-+		nr = regs[8];
-+		if (nr == __NR_getpid) {
-+			if (ptrace(PTRACE_SET_SYSCALL, pid, 0,
-+				   (void *)(unsigned long)__NR_getppid) < 0) {
-+				/* Not fatal — some VM environments (e.g. GitHub Actions
-+				 * arm64) return EIO for PTRACE_SET_SYSCALL.
-+				 * arm64_neutralize_syscall uses PTRACE_SETREGSET fallback. */
-+				non_fatal("arm64_check_ptrace: PTRACE_SET_SYSCALL unavailable"
-+					  " (%s) — using PTRACE_SETREGSET fallback\n",
-+					  strerror(errno));
-+				stop_ptraced_child(pid, 0);
-+				return;
-+			}
-+			found = true;
-+		}
-+	}
-+
-+	os_info("OK\n");
-+	stop_ptraced_child(pid, 0);
-+}
-+#endif /* __aarch64__ */
-+
-+
+ 	int ret;
+@@ -187,6 +197,11 @@
  static void __init check_ptrace(void)
  {
  	int pid, syscall, n, status;
 +#ifdef __aarch64__
++	/* arm64 ptrace check is in Rust — arch/arm64/um/os-Linux/rust/src/ptrace.rs */
 +	arm64_check_ptrace();
 +	return;
 +#endif
  
  	os_info("Checking that ptrace can change system call numbers...");
  	pid = start_ptraced_child();
-@@ -283,6 +366,9 @@
+@@ -283,6 +298,9 @@
  {
  	int pid;
  
