@@ -1,26 +1,14 @@
-Subject: [PATCH] um: skas/process.c: arm64 ptrace compatibility via Rust externs
-
-Wire in arm64 Rust symbols (arch/arm64/um/os-Linux/rust/):
-  save_registers()         — PTRACE_GETREGSET via NT_PRSTATUS
-  restore_registers()      — PTRACE_SETREGSET via NT_PRSTATUS
-  arm64_neutralize_syscall() — PTRACE_SET_SYSCALL with PTRACE_SETREGSET fallback
-
-arm64 does not have PTRACE_GETREGS/SETREGS/SYSEMU. Guards:
-  - PTRACE_SYSCALL two-stop instead of PTRACE_SYSEMU
-  - save_registers/restore_registers instead of PTRACE_GETREGS/SETREGS
-  - Two-stop syscall interception: entry stop saves args + neutralizes,
-    exit stop restores NR+args and calls handle_trap()
+Subject: [PATCH] um: skas/process.c: arm64 ptrace compat via Rust externs
 
 --- a/arch/um/os-Linux/skas/process.c
 +++ b/arch/um/os-Linux/skas/process.c
-@@ -21,6 +21,18 @@
+@@ -21,6 +21,17 @@
  #include <ptrace_user.h>
  #include <registers.h>
  #include <skas.h>
-+
 +#ifdef __aarch64__
-+/* arm64 register access and syscall neutralization — Rust static lib */
 +#include <sys/uio.h>
++#include <elf.h>
 +extern int save_registers(int pid, struct uml_pt_regs *regs);
 +extern int restore_registers(int pid, struct uml_pt_regs *regs);
 +extern void arm64_neutralize_syscall(int pid);
@@ -32,7 +20,7 @@ arm64 does not have PTRACE_GETREGS/SETREGS/SYSEMU. Guards:
  #include <sysdep/stub.h>
  #include <linux/threads.h>
  #include <timetravel.h>
-@@ -84,8 +96,16 @@
+@@ -84,8 +95,16 @@
  	unsigned long regs[MAX_REG_NR];
  	int i;
  
@@ -49,7 +37,7 @@ arm64 does not have PTRACE_GETREGS/SETREGS/SYSEMU. Guards:
  
  	printk(UM_KERN_ERR "Stub registers -\n");
  	for (i = 0; i < ARRAY_SIZE(regs); i++) {
-@@ -368,11 +388,19 @@
+@@ -368,11 +387,19 @@
  		 * fail.  In this case, there is nothing to do but
  		 * just kill the process.
  		 */
@@ -69,7 +57,7 @@ arm64 does not have PTRACE_GETREGS/SETREGS/SYSEMU. Guards:
  
  		if (put_fp_registers(pid, regs->fp)) {
  			printk(UM_KERN_ERR "%s - ptrace set fp regs failed, errno = %d\n",
-@@ -380,10 +408,14 @@
+@@ -380,10 +407,14 @@
  			fatal_sigsegv();
  		}
  
@@ -84,7 +72,7 @@ arm64 does not have PTRACE_GETREGS/SETREGS/SYSEMU. Guards:
  
  		if (ptrace(op, pid, 0, 0)) {
  			printk(UM_KERN_ERR "%s - ptrace continue failed, op = %d, errno = %d\n",
-@@ -399,11 +431,19 @@
+@@ -399,11 +430,19 @@
  		}
  
  		regs->is_user = 1;
@@ -104,7 +92,7 @@ arm64 does not have PTRACE_GETREGS/SETREGS/SYSEMU. Guards:
  
  		if (get_fp_registers(pid, regs->fp)) {
  			printk(UM_KERN_ERR "%s -  get_fp_registers failed, errno = %d\n",
-@@ -411,6 +451,9 @@
+@@ -411,6 +450,9 @@
  			fatal_sigsegv();
  		}
  
@@ -114,7 +102,7 @@ arm64 does not have PTRACE_GETREGS/SETREGS/SYSEMU. Guards:
  		UPT_SYSCALL_NR(regs) = -1; /* Assume: It's not a syscall */
  
  		if (WIFSTOPPED(status)) {
-@@ -442,7 +485,33 @@
+@@ -442,7 +484,33 @@
  				else handle_segv(pid, regs, aux_fp_regs);
  				break;
  			case SIGTRAP + 0x80:

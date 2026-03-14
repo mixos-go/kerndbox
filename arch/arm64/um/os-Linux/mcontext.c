@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: GPL-2.0
+/* C fallback — replaced by Rust (rust/src/mcontext.rs) */
+#include <sys/ucontext.h>
+#include <sysdep/ptrace.h>
+#include <sysdep/mcontext.h>
+void get_regs_from_mc(struct uml_pt_regs *regs, mcontext_t *mc) {
+    int i;
+    for (i = 0; i < 31; i++) regs->gp[i] = mc->regs[i];
+    regs->gp[HOST_SP]     = mc->regs[31];
+    regs->gp[HOST_PC]     = mc->regs[32];
+    regs->gp[HOST_PSTATE] = mc->regs[33];
+}
