@@ -8,7 +8,6 @@
 use std::env;
 use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
 
 const COW_MAGIC:   &[u8; 8] = b"LinuCow\0";
 const COW_VERSION: u32 = 2;

@@ -9,6 +9,15 @@ KBUILD_RUSTFLAGS += -Ctarget-feature=-neon,-sve,-sve2
 # and needs a custom Linux target.
 KBUILD_RUSTFLAGS += --target=$(objtree)/scripts/target.json
 
+# Disable PAC (Pointer Authentication) and BTI (Branch Target Identification)
+# UML uses kernel_setjmp/kernel_longjmp which do raw register manipulation
+# incompatible with PAC-protected return addresses.
+# arch_prctl_defaults() resets PAC keys at runtime but compile-time protection
+# must also be disabled.
+KBUILD_CFLAGS += $(call cc-option,-mbranch-protection=none)
+# Also ensure USER_CFLAGS doesn't inherit PAC from arch/arm64/Makefile
+KBUILD_CFLAGS += -DCONFIG_ARM64_PTR_AUTH=n
+
 START := 0x60000000
 
 ELF_ARCH   := aarch64

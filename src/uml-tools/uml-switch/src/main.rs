@@ -30,6 +30,7 @@ impl Switch {
     fn add_port(&mut self, p: PathBuf) -> usize {
         let i = self.ports.len(); self.ports.push(p); i
     }
+    #[allow(dead_code)]
     fn learn(&mut self, mac: Mac, port: usize) {
         self.mac_table.insert(mac, (port, Instant::now()));
     }
@@ -71,7 +72,7 @@ fn run(sock_path: &str) {
                 _ => continue,
             };
             let frame = &buf[..n];
-            let (dst, src) = macs(frame);
+            let (dst, _src) = macs(frame);
             let mut sw = s2.lock().unwrap();
             sw.gc();
             // Note: can't learn src without knowing which port sent it

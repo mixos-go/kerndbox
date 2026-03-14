@@ -109,10 +109,10 @@ build_rootfs() {
     log "Running ldconfig..."
     chroot "$work_dir" /sbin/ldconfig 2>/dev/null || true
 
-    # Create /sbin/init symlink → bash (fallback if systemd not present)
-    if [ ! -e "$work_dir/sbin/init" ]; then
-        ln -sf /bin/bash "$work_dir/sbin/init" 2>/dev/null || true
-    fi
+    # Override /sbin/init → bash for UML (systemd doesn't work in UML)
+    # Force symlink even if systemd is installed
+    ln -sf /bin/bash "$work_dir/sbin/init" 2>/dev/null || true
+    log "init symlink: $(ls -la $work_dir/sbin/init 2>/dev/null || echo 'not created')"
 
     echo "devbox" > "$work_dir/etc/hostname"
 
