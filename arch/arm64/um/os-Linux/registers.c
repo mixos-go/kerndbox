@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 /* C fallback — replaced by Rust (rust/src/ptrace.rs) when libarm64_um_os.a available */
 #include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/ptrace.h>
 #include <sys/uio.h>
@@ -13,7 +15,6 @@
 #include <unistd.h>
 #include <signal.h>
 #include <asm/unistd.h>
-#include <skas.h>
 
 #ifndef NT_PRSTATUS
 # define NT_PRSTATUS 1
@@ -117,7 +118,7 @@ void arm64_neutralize_syscall(int pid)
 	if (ptrace(PTRACE_GETREGSET, pid, (void *)(long)NT_PRSTATUS, &iov) < 0) {
 		printk(UM_KERN_ERR "arm64_neutralize_syscall: PTRACE_GETREGSET failed: %d\n",
 		       errno);
-		fatal_sigsegv();
+		abort();
 		return;
 	}
 	regs[8] = __NR_getpid;  /* x8 = syscall number register */
@@ -125,7 +126,7 @@ void arm64_neutralize_syscall(int pid)
 	if (ptrace(PTRACE_SETREGSET, pid, (void *)(long)NT_PRSTATUS, &iov) < 0) {
 		printk(UM_KERN_ERR "arm64_neutralize_syscall: PTRACE_SETREGSET failed: %d\n",
 		       errno);
-		fatal_sigsegv();
+		abort();
 	}
 }
 
@@ -139,12 +140,12 @@ void arm64_check_ptrace(void)
 	unsigned long nr;
 	int found = 0;
 
-	os_info("Checking ptrace syscall modification (arm64 PTRACE_SET_SYSCALL)...");
+	fprintf(stderr, "Checking ptrace syscall modification (arm64 PTRACE_SET_SYSCALL)...");
 
 	/* Fork a child to trace */
 	pid = fork();
 	if (pid < 0)
-		fatal_perror("arm64_check_ptrace: fork");
+		do { perror("arm64_check_ptrace: fork"); exit(1); } while (0);
 	if (pid == 0) {
 		/* Child: enable tracing and spin in getpid() */
 		ptrace(PTRACE_TRACEME, 0, NULL, NULL);
@@ -157,24 +158,24 @@ void arm64_check_ptrace(void)
 	/* Parent: wait for SIGSTOP then trace */
 	CATCH_EINTR(n = waitpid(pid, &status, WUNTRACED));
 	if (n < 0)
-		fatal_perror("arm64_check_ptrace: waitpid");
+		do { perror("arm64_check_ptrace: waitpid"); exit(1); } while (0);
 
 	if (ptrace(PTRACE_SETOPTIONS, pid, 0,
 		   (void *)(long)PTRACE_O_TRACESYSGOOD) < 0)
-		fatal_perror("arm64_check_ptrace: PTRACE_SETOPTIONS");
+		do { perror("arm64_check_ptrace: PTRACE_SETOPTIONS"); exit(1); } while (0);
 
 	while (1) {
 		if (ptrace(PTRACE_SYSCALL, pid, 0, 0) < 0)
-			fatal_perror("arm64_check_ptrace: PTRACE_SYSCALL");
+			do { perror("arm64_check_ptrace: PTRACE_SYSCALL"); exit(1); } while (0);
 
 		CATCH_EINTR(n = waitpid(pid, &status, WUNTRACED));
 		if (n < 0)
-			fatal_perror("arm64_check_ptrace: waitpid loop");
+			do { perror("arm64_check_ptrace: waitpid loop"); exit(1); } while (0);
 
 		if (!WIFSTOPPED(status)) {
 			if (found && WIFEXITED(status) && WEXITSTATUS(status) == 0)
 				break;
-			fatal("arm64_check_ptrace: unexpected exit 0x%x\n", status);
+			do { fprintf(stderr, "arm64_check_ptrace: unexpected exit 0x%x\n", status); exit(1); } while (0);
 		}
 		if (WSTOPSIG(status) != (SIGTRAP | 0x80))
 			continue;
@@ -184,15 +185,16 @@ void arm64_check_ptrace(void)
 		iov.iov_base = regs;
 		iov.iov_len  = sizeof(regs);
 		if (ptrace(PTRACE_GETREGSET, pid, (void *)(long)NT_PRSTATUS, &iov) < 0)
-			fatal_perror("arm64_check_ptrace: PTRACE_GETREGSET");
+			do { perror("arm64_check_ptrace: PTRACE_GETREGSET"); exit(1); } while (0);
 
 		nr = regs[8];
 		if (nr == __NR_getpid) {
 			if (ptrace(PTRACE_SET_SYSCALL, pid, 0,
 				   (void *)(unsigned long)__NR_getppid) < 0) {
-				non_fatal("arm64_check_ptrace: PTRACE_SET_SYSCALL"
-					  " unavailable (%s) — fallback mode\n",
-					  strerror(errno));
+				fprintf(stderr,
+					"arm64_check_ptrace: PTRACE_SET_SYSCALL"
+					" unavailable (%s) - fallback mode\n",
+					strerror(errno));
 				ptrace(PTRACE_DETACH, pid, NULL, NULL);
 				CATCH_EINTR(waitpid(pid, &status, 0));
 				return;
@@ -200,7 +202,7 @@ void arm64_check_ptrace(void)
 			found = 1;
 		}
 	}
-	os_info("OK\n");
+	fprintf(stderr, "OK\n");
 	ptrace(PTRACE_DETACH, pid, NULL, NULL);
 	CATCH_EINTR(waitpid(pid, &status, 0));
 }
