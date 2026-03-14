@@ -16,8 +16,16 @@ struct uml_pt_regs;
 struct pt_regs;
 
 /* registers.c — caller must have included longjmp.h for jmp_buf */
-int ptrace_getregs(long pid, unsigned long *regs_out);
-int ptrace_setregs(long pid, unsigned long *regs_in);
+int  save_registers(int pid, struct uml_pt_regs *regs);
+int  restore_registers(int pid, struct uml_pt_regs *regs);
+int  ptrace_getregs(long pid, unsigned long *regs_out);
+int  ptrace_setregs(long pid, unsigned long *regs_in);
+int  get_fp_registers(int pid, unsigned long *regs);
+int  put_fp_registers(int pid, unsigned long *regs);
+void get_safe_registers(unsigned long *regs, unsigned long *fp_regs);
+void arch_init_registers(int pid);
+void arm64_neutralize_syscall(int pid);
+void arm64_check_ptrace(void);
 
 /* signal.c — set_sigstack() is in arch/um/os-Linux/signal.c (generic) */
 void remove_sigstack(void);
