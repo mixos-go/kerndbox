@@ -160,9 +160,10 @@ log "=== Booting UML ==="
     rootfstype=ext4 \
     rw \
     mem=64M \
+    init=/bin/bash \
     umid="$UMID" \
     "mconsole=notify:${NOTIFY_SOCK}" \
-    console=tty0 \
+    con=xterm \
     < /dev/null \
     > "$UML_LOG" 2>&1 &
 UML_PID=$!
