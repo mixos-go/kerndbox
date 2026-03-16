@@ -164,7 +164,7 @@ log "=== Booting UML ==="
     initargs=sh \
     umid="$UMID" \
     "mconsole=notify:${NOTIFY_SOCK}" \
-    con=pts \
+    console=tty0 \
     < /dev/null \
     > "$UML_LOG" 2>&1 &
 UML_PID=$!
