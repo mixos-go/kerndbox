@@ -163,8 +163,7 @@ log "=== Booting UML ==="
     init=/bin/bash \
     umid="$UMID" \
     "mconsole=notify:${NOTIFY_SOCK}" \
-    con=xterm \
-    < /dev/null \
+    con=fd:0,fd:1 \
     > "$UML_LOG" 2>&1 &
 UML_PID=$!
 log "UML PID: $UML_PID"
