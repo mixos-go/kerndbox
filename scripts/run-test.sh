@@ -65,6 +65,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Create stdin FIFO for UML
+[[ -p "$STDIN_FIFO" ]] || mkfifo "$STDIN_FIFO"
+
 # ── Python helpers (tulis ke file dulu, bukan heredoc ke background) ─────
 NOTIFY_PY="/tmp/ktest-notify-$$.py"
 MC_PY="/tmp/ktest-mc-$$.py"
@@ -161,11 +164,10 @@ log "=== Booting UML ==="
     rw \
     mem=64M \
     init=/bin/busybox \
-    initargs="sleep infinity" \
+    initargs=sh \
     umid="$UMID" \
     "mconsole=notify:${NOTIFY_SOCK}" \
-    con=fd:0,fd:1 \
-    console=tty0 \
+    con=pts \
     > "$UML_LOG" 2>&1 &
 UML_PID=$!
 log "UML PID: $UML_PID"
