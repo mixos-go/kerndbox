@@ -163,7 +163,6 @@ log "=== Booting UML ==="
     rootfstype=ext4 \
     rw \
     mem=64M \
-    init=/bin/bash \
     umid="$UMID" \
     "mconsole=notify:${NOTIFY_SOCK}" \
     con=fd:0,fd:1 \
