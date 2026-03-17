@@ -161,7 +161,7 @@ log "=== Booting UML ==="
     rw \
     mem=64M \
     init=/bin/busybox \
-    initargs=sh \
+    initargs="sleep infinity" \
     umid="$UMID" \
     "mconsole=notify:${NOTIFY_SOCK}" \
     con=fd:0,fd:1 \
