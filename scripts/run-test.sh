@@ -67,6 +67,7 @@ trap cleanup EXIT
 
 # Create stdin FIFO for UML
 [[ -p "$STDIN_FIFO" ]] || mkfifo "$STDIN_FIFO"
+exec 9<>"$STDIN_FIFO"   # Open fd 9 read-write to prevent EOF
 
 # ── Python helpers (tulis ke file dulu, bukan heredoc ke background) ─────
 NOTIFY_PY="/tmp/ktest-notify-$$.py"
@@ -163,10 +164,13 @@ log "=== Booting UML ==="
     rootfstype=ext4 \
     rw \
     mem=64M \
+    init=/bin/busybox \
+    initargs=sh \
     umid="$UMID" \
     "mconsole=notify:${NOTIFY_SOCK}" \
     con=fd:0,fd:1 \
     console=tty0 \
+    < "$STDIN_FIFO" \
     > "$UML_LOG" 2>&1 &
 UML_PID=$!
 log "UML PID: $UML_PID"
