@@ -163,8 +163,7 @@ log "=== Booting UML ==="
     rootfstype=ext4 \
     rw \
     mem=64M \
-    init=/bin/busybox \
-    initargs=sh \
+    init=/sbin/init \
     umid="$UMID" \
     "mconsole=notify:${NOTIFY_SOCK}" \
     con=fd:0,fd:1 \
