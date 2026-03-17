@@ -65,10 +65,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Create stdin FIFO for UML
-[[ -p "$STDIN_FIFO" ]] || mkfifo "$STDIN_FIFO"
-exec 9<>"$STDIN_FIFO"   # Open fd 9 read-write to prevent EOF
-
 # ── Python helpers (tulis ke file dulu, bukan heredoc ke background) ─────
 NOTIFY_PY="/tmp/ktest-notify-$$.py"
 MC_PY="/tmp/ktest-mc-$$.py"
@@ -156,6 +152,12 @@ done
 [[ -S "$NOTIFY_SOCK" ]] || die "notify socket tidak terbuat dalam 2 detik"
 log "Notify socket ready ✓"
 
+# ── FIFO stdin ────────────────────────────────────────────────────────────
+# FIFO membuat kita bisa tulis commands SETELAH init shell ready,
+# bukan di pipe yang langsung EOF.
+mkfifo "$STDIN_FIFO"
+exec 9<>"$STDIN_FIFO"   # buka fd 9 rw agar FIFO tidak EOF sebelum waktunya
+
 # ── Launch UML ────────────────────────────────────────────────────────────
 log "=== Booting UML ==="
 "$UML_BIN" \
@@ -165,11 +167,9 @@ log "=== Booting UML ==="
     rw \
     mem=64M \
     init=/bin/busybox \
-    initargs=sh \
     umid="$UMID" \
     "mconsole=notify:${NOTIFY_SOCK}" \
     con=fd:0,fd:1 \
-    console=tty0 \
     < "$STDIN_FIFO" \
     > "$UML_LOG" 2>&1 &
 UML_PID=$!
@@ -232,29 +232,32 @@ fi
 MC_SOCK="$HOME/.uml/${UMID}/mconsole"
 log "mconsole ready: $MC_SOCK"
 
-# ── Simple boot test: wait and check if still running ────────────────────
-# This is a basic test: just verify UML kernel stays alive after boot
+# Beri sedikit waktu: mconsole notify fires saat driver ready,
+# tapi init=/bin/sh mungkin belum selesai boot ke prompt.
+sleep 2
 
-log "Waiting 10 seconds to verify kernel stays alive..."
-sleep 10
-
-# ── Check if UML is still running ─────────────────────────────────────
+# ── Cek apakah UML sudah exit dengan panic ────────────────────────────
+# Jika "Requested init" gagal, UML exit sangat cepat sebelum kita bisa kirim commands
 if ! kill -0 "$UML_PID" 2>/dev/null; then
+    log "❌  UML sudah exit sebelum init commands dikirim"
     if grep -q "Requested init.*failed" "$UML_LOG" 2>/dev/null; then
-        log "❌  Init binary not found in rootfs (ENOENT)"
-    elif grep -q "Kernel panic" "$UML_LOG" 2>/dev/null; then
-        log "❌  Kernel panic"
-    else
-        log "❌  UML exited unexpectedly"
+        log "    PENYEBAB: init binary tidak ditemukan di rootfs (ENOENT)"
+        log "    Rootfs kemungkinan incomplete — rebuild dengan: workflow rootfs"
+        log "    (debootstrap second stage gagal jika dijalankan dalam Docker tanpa mount proc)"
     fi
-    log "--- Last 20 lines of UML log ---"
-    tail -20 "$UML_LOG" | sed "s/^/  /"
+    log "--- Full UML output ---"
+    cat "$UML_LOG" 2>/dev/null | sed "s/^/  /"
     log "---"
     exit 1
 fi
 
-log "✅  UML kernel stayed alive for 10s - boot test passed!"
-exit 0
+log "Mengirim init commands via stdin FIFO..."
+{
+    echo "echo DEVBOX_BOOT_OK"
+    echo "touch $MARKER"
+    sleep 2
+    echo "poweroff -f"
+} >&9
 
 # ── Watchdog: poll mconsole, deteksi silent hang ─────────────────────────
 BOOT_PASS=0
