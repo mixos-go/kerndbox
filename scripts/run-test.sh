@@ -163,8 +163,12 @@ log "=== Booting UML ==="
     rootfstype=ext4 \
     rw \
     mem=64M \
+    init=/bin/busybox \
+    initargs=sh \
     umid="$UMID" \
     "mconsole=notify:${NOTIFY_SOCK}" \
+    con=fd:0,fd:1 \
+    console=tty0 \
     > "$UML_LOG" 2>&1 &
 UML_PID=$!
 log "UML PID: $UML_PID"
